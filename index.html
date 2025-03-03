@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser Redaction Tool</title>
+  <link rel="stylesheet" href="public/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+  <style>
+    .redirect-container {
+      text-align: center;
+      margin-top: 100px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .redirect-button {
+      display: inline-block;
+      background-color: #3454d1;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-weight: 600;
+      text-decoration: none;
+      margin-top: 20px;
+      transition: background-color 0.2s;
+    }
+    .redirect-button:hover {
+      background-color: #2b46b0;
+    }
+  </style>
+</head>
+<body>
+  <div class="redirect-container">
+    <h1>Browser Redaction Tool</h1>
+    <p>A privacy-focused document redaction tool that runs entirely in the browser.</p>
+    <a href="public/index.html" class="redirect-button">Launch Application</a>
+  </div>
+</body>
+</html>

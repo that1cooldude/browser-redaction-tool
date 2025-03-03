@@ -1,0 +1,53 @@
+{
+  "name": "browser-redaction-tool",
+  "version": "0.1.0",
+  "description": "A privacy-focused document redaction tool that runs entirely in the browser",
+  "main": "src/app.js",
+  "type": "module",
+  "scripts": {
+    "start": "http-server -c-1",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "lint": "eslint src/"
+  },
+  "keywords": [
+    "redaction",
+    "privacy",
+    "document",
+    "browser",
+    "pyodide"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^8.57.0",
+    "http-server": "^14.1.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    },
+    "moduleFileExtensions": ["js", "json"],
+    "moduleDirectories": ["node_modules", "src"],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@babel)/)"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  },
+  "babel": {
+    "presets": [
+      ["@babel/preset-env", {
+        "targets": {
+          "node": "current"
+        }
+      }]
+    ]
+  }
+}

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser Redaction Tool - Test Page</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo">
+        <h1>Browser Redaction Tool - Test Page</h1>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div class="content">
+        <div class="step-container" id="test-step">
+          <div class="step-header">
+            <h2>Test Upload</h2>
+            <p>This is a simplified test page to verify UI functionality.</p>
+          </div>
+          <div class="upload-container" id="document-uploader"></div>
+          
+          <div class="test-controls" style="margin-top: 20px;">
+            <button id="test-progress-btn" class="btn btn-primary">Test Progress Bar</button>
+            <button id="test-error-btn" class="btn btn-danger">Test Error Message</button>
+            <button id="test-success-btn" class="btn btn-success">Test Success Message</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <div class="footer-info">
+        <p>Browser Redaction Tool - Test Page</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Status message container -->
+  <div id="status-message" class="status-message"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Test page loaded');
+      
+      // Create drop zone manually
+      const uploadContainer = document.getElementById('document-uploader');
+      if (uploadContainer) {
+        const dropZone = document.createElement('div');
+        dropZone.className = 'drop-zone';
+        dropZone.innerHTML = `
+          <div class="drop-zone-prompt">
+            <i class="icon-upload"></i>
+            <p>Drag and drop your document here, or <span class="browse-link">browse</span></p>
+            <p class="file-types">Supported file types: PDF, DOCX, TXT, Images, CSV, JSON</p>
+          </div>
+        `;
+        
+        // Create progress container
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'progress-container';
+        
+        const progressBar = document.createElement('div');
+        progressBar.className = 'progress-bar';
+        progressBar.style.width = '0%';
+        
+        const statusMessage = document.createElement('div');
+        statusMessage.className = 'upload-status';
+        statusMessage.textContent = 'Ready to upload';
+        
+        progressContainer.appendChild(progressBar);
+        progressContainer.appendChild(statusMessage);
+        
+        // Create file input
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.className = 'file-input';
+        fileInput.setAttribute('hidden', '');
+        
+        // Add elements to container
+        uploadContainer.appendChild(dropZone);
+        uploadContainer.appendChild(progressContainer);
+        uploadContainer.appendChild(fileInput);
+        
+        // Set up browse button
+        const browseLink = dropZone.querySelector('.browse-link');
+        if (browseLink) {
+          browseLink.addEventListener('click', () => {
+            fileInput.click();
+          });
+        }
+        
+        // Set up file selection
+        fileInput.addEventListener('change', (event) => {
+          if (event.target.files.length > 0) {
+            const file = event.target.files[0];
+            statusMessage.textContent = `Selected file: ${file.name}`;
+            progressBar.style.width = '30%';
+          }
+        });
+        
+        // Set up drag and drop
+        dropZone.addEventListener('dragover', (event) => {
+          event.preventDefault();
+          dropZone.classList.add('drag-over');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.classList.remove('drag-over');
+        });
+        
+        dropZone.addEventListener('drop', (event) => {
+          event.preventDefault();
+          dropZone.classList.remove('drag-over');
+          
+          if (event.dataTransfer.files.length > 0) {
+            const file = event.dataTransfer.files[0];
+            statusMessage.textContent = `Dropped file: ${file.name}`;
+            progressBar.style.width = '30%';
+          }
+        });
+      }
+      
+      // Set up test buttons
+      document.getElementById('test-progress-btn').addEventListener('click', () => {
+        const progressBar = document.querySelector('.progress-bar');
+        if (progressBar) {
+          let width = 0;
+          const interval = setInterval(() => {
+            width += 10;
+            progressBar.style.width = `${width}%`;
+            if (width >= 100) {
+              clearInterval(interval);
+              showStatusMessage('Process completed successfully', 'success');
+            }
+          }, 300);
+        }
+      });
+      
+      document.getElementById('test-error-btn').addEventListener('click', () => {
+        showStatusMessage('An error occurred while processing the document', 'error');
+      });
+      
+      document.getElementById('test-success-btn').addEventListener('click', () => {
+        showStatusMessage('Operation completed successfully', 'success');
+      });
+      
+      function showStatusMessage(message, type) {
+        const statusElement = document.getElementById('status-message');
+        if (statusElement) {
+          statusElement.textContent = message;
+          statusElement.className = `status-message status-${type} visible`;
+          
+          setTimeout(() => {
+            statusElement.className = 'status-message';
+          }, 4000);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

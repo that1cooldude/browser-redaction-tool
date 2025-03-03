@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser Redaction Tool</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo">
+        <img src="img/logo.svg" alt="Browser Redaction Tool" class="logo-image">
+        <h1>Browser Redaction Tool</h1>
+      </div>
+      <div class="header-controls">
+        <button id="settings-btn" class="btn btn-icon" title="Settings">
+          <i class="icon-settings"></i>
+        </button>
+        <button id="help-btn" class="btn btn-icon" title="Help">
+          <i class="icon-help"></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <h2 class="sidebar-title">Workflow</h2>
+          <ul class="workflow-steps">
+            <li class="step active" data-step="upload">
+              <i class="icon-upload"></i>
+              <span>Upload</span>
+            </li>
+            <li class="step" data-step="rules">
+              <i class="icon-rules"></i>
+              <span>Redaction Rules</span>
+            </li>
+            <li class="step" data-step="preview">
+              <i class="icon-preview"></i>
+              <span>Preview</span>
+            </li>
+            <li class="step" data-step="export">
+              <i class="icon-export"></i>
+              <span>Export</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="sidebar-section">
+          <h2 class="sidebar-title">Redaction Rules</h2>
+          <div class="rule-list-container">
+            <ul class="rule-list" id="rule-list">
+              <!-- Rule items will be added here -->
+            </ul>
+            <button id="add-rule-btn" class="btn btn-sm btn-outline">
+              <i class="icon-plus"></i> Add Rule
+            </button>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2 class="sidebar-title">Recent Documents</h2>
+          <ul class="recent-docs" id="recent-docs">
+            <!-- Recent documents will be added here -->
+          </ul>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="step-container" id="upload-step">
+          <div class="step-header">
+            <h2>Upload Document</h2>
+            <p>Upload a document to begin the redaction process.</p>
+          </div>
+          
+          <div class="upload-tabs">
+            <button class="upload-tab active" data-tab="single">Single Document</button>
+            <button class="upload-tab" data-tab="batch">Batch Upload</button>
+          </div>
+          
+          <div class="upload-tab-content active" id="single-upload-tab">
+            <div class="upload-container" id="document-uploader"></div>
+          </div>
+          
+          <div class="upload-tab-content" id="batch-upload-tab">
+            <div class="batch-upload-container" id="batch-uploader-container"></div>
+          </div>
+        </div>
+
+        <div class="step-container" id="rules-step" hidden>
+          <div class="step-header">
+            <h2>Manage Redaction Rules</h2>
+            <p>Create and customize rules to identify sensitive information.</p>
+          </div>
+          <div class="rules-container" id="rule-editor"></div>
+        </div>
+
+        <div class="step-container" id="preview-step" hidden>
+          <div class="step-header">
+            <h2>Preview Redactions</h2>
+            <p>Review and confirm redactions before exporting.</p>
+          </div>
+          
+          <div class="preview-tabs">
+            <button class="preview-tab active" data-tab="document-preview">Document Preview</button>
+            <button class="preview-tab" data-tab="analysis">Analysis</button>
+            <button class="preview-tab" data-tab="redaction-dashboard">Dashboard</button>
+            <button class="preview-tab" data-tab="image-editor">Image Editor</button>
+            <button class="preview-tab" data-tab="rule-tester">Rule Tester</button>
+          </div>
+          
+          <div class="preview-tab-content active" id="document-preview-tab">
+            <div class="preview-container" id="document-preview"></div>
+            <div class="preview-actions">
+              <button id="prev-page-btn" class="btn btn-icon" disabled title="Previous Page">
+                <i class="icon-prev"></i>
+              </button>
+              <span id="page-indicator">Page 1 of 1</span>
+              <button id="next-page-btn" class="btn btn-icon" disabled title="Next Page">
+                <i class="icon-next"></i>
+              </button>
+              <button id="redact-btn" class="btn btn-primary">
+                Apply Redactions
+              </button>
+            </div>
+          </div>
+          
+          <div class="preview-tab-content" id="analysis-tab">
+            <div id="redaction-analyzer"></div>
+          </div>
+          
+          <div class="preview-tab-content" id="redaction-dashboard-tab">
+            <div id="redaction-dashboard"></div>
+          </div>
+          
+          <div class="preview-tab-content" id="image-editor-tab">
+            <div id="image-redaction-editor"></div>
+          </div>
+          
+          <div class="preview-tab-content" id="rule-tester-tab">
+            <div id="redaction-rule-tester"></div>
+          </div>
+        </div>
+
+        <div class="step-container" id="export-step" hidden>
+          <div class="step-header">
+            <h2>Export Document</h2>
+            <p>Export your redacted document.</p>
+          </div>
+          <div class="export-container" id="export-options">
+            <div class="export-options">
+              <div class="form-group">
+                <label for="export-format">Export Format</label>
+                <select id="export-format" class="form-control">
+                  <option value="pdf">PDF</option>
+                  <option value="text">Text</option>
+                  <option value="json">JSON</option>
+                  <option value="image">Image</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="export-filename">Filename</label>
+                <input type="text" id="export-filename" class="form-control" placeholder="document_redacted.pdf">
+              </div>
+              <div class="form-group checkbox">
+                <input type="checkbox" id="include-audit" checked>
+                <label for="include-audit">Include Audit Information</label>
+              </div>
+              <div class="form-group checkbox">
+                <input type="checkbox" id="add-watermark" checked>
+                <label for="add-watermark">Add Watermark</label>
+              </div>
+              <div class="export-actions">
+                <button id="export-btn" class="btn btn-primary">
+                  Export Document
+                </button>
+              </div>
+            </div>
+            <div class="export-preview" id="export-preview">
+              <h3>Export Preview</h3>
+              <div class="preview-placeholder">
+                <i class="icon-document"></i>
+                <p>Preview will appear here</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <div class="status-bar">
+        <div id="pyodide-status" class="status-item">
+          <i class="icon-loading"></i>
+          <span>Initializing...</span>
+        </div>
+        <div id="memory-usage" class="status-item">
+          <i class="icon-memory"></i>
+          <span>Memory: 0 MB</span>
+        </div>
+      </div>
+      <div class="footer-info">
+        <p>Browser Redaction Tool - All processing happens in your browser</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Modal templates -->
+  <div class="modal hidden" id="rule-modal" style="display: none;" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="rule-modal-title">Add Redaction Rule</h3>
+        <button class="btn-close" id="rule-modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <form id="rule-form">
+          <div class="form-group">
+            <label for="rule-name">Rule Name</label>
+            <input type="text" id="rule-name" class="form-control" placeholder="e.g., Email Addresses" required>
+          </div>
+          
+          <div class="form-group">
+            <label>Match Type</label>
+            <div class="radio-group">
+              <div class="radio-option">
+                <input type="radio" id="match-pattern" name="match-type" value="pattern" checked>
+                <label for="match-pattern">Simple Pattern</label>
+              </div>
+              <div class="radio-option">
+                <input type="radio" id="match-regex" name="match-type" value="regex">
+                <label for="match-regex">Regular Expression</label>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-group" id="pattern-group">
+            <label for="rule-pattern">Pattern to Match</label>
+            <input type="text" id="rule-pattern" class="form-control" placeholder="e.g., confidential">
+          </div>
+          
+          <div class="form-group" id="regex-group" hidden>
+            <label for="rule-regex">Regular Expression</label>
+            <input type="text" id="rule-regex" class="form-control" placeholder="e.g., \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b">
+            <div class="help-text">For matching complex patterns like email addresses, phone numbers, etc.</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="replacement-type">Replacement Type</label>
+            <select id="replacement-type" class="form-control">
+              <option value="fixed">Fixed Text</option>
+              <option value="character">Character Replacement</option>
+              <option value="format-preserving">Format-Preserving</option>
+            </select>
+          </div>
+          
+          <div class="form-group" id="replacement-text-group">
+            <label for="replacement-text">Replacement Text</label>
+            <input type="text" id="replacement-text" class="form-control" value="[REDACTED]">
+          </div>
+          
+          <div class="form-group" id="replacement-char-group" hidden>
+            <label for="replacement-char">Replacement Character</label>
+            <input type="text" id="replacement-char" class="form-control" value="X" maxlength="1">
+          </div>
+          
+          <div class="form-group">
+            <label for="rule-description">Description (Optional)</label>
+            <textarea id="rule-description" class="form-control" placeholder="Add notes about this rule"></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="rule-test-btn" class="btn btn-outline">Test Rule</button>
+            <button type="submit" id="rule-save-btn" class="btn btn-primary">Save Rule</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="rule-template-modal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Select Rule Template</h3>
+        <button class="btn-close" id="template-modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="template-list">
+          <!-- Templates will be added here -->
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Scripts -->
+  <script type="module" src="./src/app.js"></script>
+  <!-- Include a status message container -->
+  <div id="status-message" class="status-message"></div>
+</body>
+</html>
