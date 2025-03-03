@@ -83,6 +83,7 @@
           <div class="upload-tabs">
             <button class="upload-tab active" data-tab="single">Single Document</button>
             <button class="upload-tab" data-tab="batch">Batch Upload</button>
+            <button class="upload-tab" data-tab="paste">Paste Text</button>
           </div>
           
           <div class="upload-tab-content active" id="single-upload-tab">
@@ -91,6 +92,29 @@
           
           <div class="upload-tab-content" id="batch-upload-tab">
             <div class="batch-upload-container" id="batch-uploader-container"></div>
+          </div>
+          
+          <div class="upload-tab-content" id="paste-upload-tab">
+            <div class="paste-container">
+              <div class="form-group">
+                <label for="paste-text">Paste Text for Redaction</label>
+                <textarea id="paste-text" class="form-control" rows="10" placeholder="Paste text containing sensitive information that you want to redact for use in LLM prompts..."></textarea>
+              </div>
+              <div class="form-group">
+                <button id="process-paste-btn" class="btn btn-primary">Process Text</button>
+              </div>
+              <div class="redacted-output" id="redacted-output-container" style="display: none;">
+                <h3>Redacted Output</h3>
+                <div class="form-group">
+                  <label for="redacted-text">Redacted Text (For LLM Prompts)</label>
+                  <textarea id="redacted-text" class="form-control" rows="10" readonly></textarea>
+                </div>
+                <div class="form-actions">
+                  <button id="copy-redacted-btn" class="btn btn-outline">Copy to Clipboard</button>
+                  <button id="save-redacted-btn" class="btn btn-outline">Save as Document</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -299,7 +323,7 @@
   </div>
   
   <!-- Scripts -->
-  <script type="module" src="./src/app.js"></script>
+  <script type="module" src="../src/app.js"></script>
   <!-- Include a status message container -->
   <div id="status-message" class="status-message"></div>
 </body>

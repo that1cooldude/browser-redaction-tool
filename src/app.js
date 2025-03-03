@@ -32,7 +32,9 @@ const appState = {
   batchMode: false,
   batchDocuments: [],
   analysisResults: null,
-  imageRedactions: []
+  imageRedactions: [],
+  pastedText: null,
+  redactedText: null
 };
 
 // Service instances
@@ -67,6 +69,14 @@ async function initializeApp() {
       redactionDashboard: document.getElementById('redaction-dashboard'),
       imageRedactionEditor: document.getElementById('image-redaction-editor'),
       redactionRuleTester: document.getElementById('redaction-rule-tester'),
+      
+      // Paste text elements
+      pasteTextArea: document.getElementById('paste-text'),
+      processTextButton: document.getElementById('process-paste-btn'),
+      redactedOutputContainer: document.getElementById('redacted-output-container'),
+      redactedTextArea: document.getElementById('redacted-text'),
+      copyRedactedButton: document.getElementById('copy-redacted-btn'),
+      saveRedactedButton: document.getElementById('save-redacted-btn'),
       
       // Rule management
       ruleList: document.getElementById('rule-list'),
@@ -221,7 +231,28 @@ function setupEventListeners(uiElements) {
     }
     return false;
   };
-
+  
+  // Paste text processing
+  if (uiElements.processTextButton) {
+    safeAddEventListener(uiElements.processTextButton, 'click', () => {
+      processRedactionText();
+    });
+  }
+  
+  // Copy redacted text to clipboard
+  if (uiElements.copyRedactedButton) {
+    safeAddEventListener(uiElements.copyRedactedButton, 'click', () => {
+      copyRedactedTextToClipboard();
+    });
+  }
+  
+  // Save redacted text as document
+  if (uiElements.saveRedactedButton) {
+    safeAddEventListener(uiElements.saveRedactedButton, 'click', () => {
+      saveRedactedTextAsDocument();
+    });
+  }
+  
   // Workflow step navigation
   safeAddEventListenerToCollection(uiElements.workflowSteps, 'click', (event) => {
     const step = event.currentTarget;
@@ -1502,6 +1533,148 @@ window.addEventListener('keydown', function(e) {
     });
   }
 });
+
+/**
+ * Process text from the paste area and apply redaction rules
+ */
+function processRedactionText() {
+  try {
+    // Get text from textarea
+    const pasteTextArea = document.getElementById('paste-text');
+    if (!pasteTextArea) {
+      throw new Error('Paste text area not found');
+    }
+    
+    const text = pasteTextArea.value.trim();
+    if (!text) {
+      throw new Error('Please paste some text to redact');
+    }
+    
+    // Check if we have rules
+    if (!appState.redactionRules || appState.redactionRules.length === 0) {
+      throw new Error('No redaction rules defined. Please add at least one rule.');
+    }
+    
+    // Store original text in app state
+    appState.pastedText = text;
+    
+    // Show processing status
+    updateUIStatus('processing', 'Applying redaction rules to text...');
+    
+    // Apply redaction
+    if (redactionService && typeof redactionService.previewRedactedText === 'function') {
+      // Use the redaction service to process the text
+      const redactedText = redactionService.previewRedactedText(text, appState.redactionRules);
+      appState.redactedText = redactedText;
+      
+      // Update the redacted text area
+      const redactedTextArea = document.getElementById('redacted-text');
+      if (redactedTextArea) {
+        redactedTextArea.value = redactedText;
+      }
+      
+      // Show the redacted output container
+      const redactedOutputContainer = document.getElementById('redacted-output-container');
+      if (redactedOutputContainer) {
+        redactedOutputContainer.style.display = 'block';
+      }
+      
+      // Show success message
+      updateUIStatus('success', 'Text redacted successfully. Ready for use in LLM prompts.');
+    } else {
+      throw new Error('Redaction service not available. Please try again later.');
+    }
+  } catch (error) {
+    console.error('Text redaction error:', error);
+    updateUIStatus('error', `Failed to redact text: ${error.message}`);
+  }
+}
+
+/**
+ * Copy redacted text to clipboard
+ */
+function copyRedactedTextToClipboard() {
+  try {
+    const redactedTextArea = document.getElementById('redacted-text');
+    if (!redactedTextArea) {
+      throw new Error('Redacted text area not found');
+    }
+    
+    // Select the text
+    redactedTextArea.select();
+    redactedTextArea.setSelectionRange(0, 99999); // For mobile devices
+    
+    // Copy to clipboard
+    document.execCommand('copy');
+    
+    // Deselect
+    window.getSelection().removeAllRanges();
+    
+    // Show success message
+    updateUIStatus('success', 'Redacted text copied to clipboard');
+  } catch (error) {
+    console.error('Copy to clipboard error:', error);
+    
+    // Fallback method
+    try {
+      if (appState.redactedText) {
+        navigator.clipboard.writeText(appState.redactedText)
+          .then(() => updateUIStatus('success', 'Redacted text copied to clipboard'))
+          .catch(err => {
+            updateUIStatus('error', `Failed to copy text: ${err.message}`);
+          });
+      }
+    } catch (fallbackError) {
+      updateUIStatus('error', 'Failed to copy text to clipboard');
+    }
+  }
+}
+
+/**
+ * Save redacted text as a document
+ */
+function saveRedactedTextAsDocument() {
+  try {
+    if (!appState.redactedText) {
+      throw new Error('No redacted text available');
+    }
+    
+    // Create a text document object
+    const textDocument = {
+      id: `doc-${Date.now()}`,
+      metadata: {
+        name: `redacted-text-${new Date().toISOString().slice(0, 10)}.txt`,
+        type: 'text/plain',
+        extension: 'txt',
+        size: appState.redactedText.length,
+        created: new Date(),
+        source: 'paste'
+      },
+      content: {
+        text: appState.redactedText,
+        lines: appState.redactedText.split('\n')
+      }
+    };
+    
+    // Add document to app state
+    appState.currentDocument = textDocument;
+    appState.documents.push(textDocument);
+    
+    // Update document viewer if available
+    if (documentViewer) {
+      documentViewer.loadDocument(textDocument);
+    }
+    
+    // Move to preview step
+    navigateToStep('preview');
+    
+    // Show success message
+    updateUIStatus('success', 'Redacted text saved as document');
+  } catch (error) {
+    console.error('Save as document error:', error);
+    updateUIStatus('error', `Failed to save text as document: ${error.message}`);
+  }
+}
 
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
