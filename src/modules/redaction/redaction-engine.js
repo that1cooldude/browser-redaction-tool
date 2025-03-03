@@ -829,6 +829,63 @@ function createDefaultRule(name = 'New Rule') {
 }
 
 /**
+ * Create common rules for sensitive data
+ * @returns {Array} - Array of common redaction rules
+ */
+function createCommonRules() {
+  return [
+    {
+      id: `rule-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      name: 'Email Addresses',
+      pattern: null,
+      regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b',
+      replacementType: 'fixed',
+      replacement: '[EMAIL]',
+      description: 'Matches standard email addresses',
+      priority: 1,
+      enabled: true,
+      created: new Date().toISOString()
+    },
+    {
+      id: `rule-${Date.now()}-${Math.floor(Math.random() * 10000) + 1}`,
+      name: 'Phone Numbers',
+      pattern: null,
+      regex: '\\b(\\+?1[-\\s]?)?(\\(?[0-9]{3}\\)?[-\\s]?)?[0-9]{3}[-\\s]?[0-9]{4}\\b',
+      replacementType: 'fixed',
+      replacement: '[PHONE]',
+      description: 'Matches US phone numbers in various formats',
+      priority: 2,
+      enabled: true,
+      created: new Date().toISOString()
+    },
+    {
+      id: `rule-${Date.now()}-${Math.floor(Math.random() * 10000) + 2}`,
+      name: 'Social Security Numbers',
+      pattern: null,
+      regex: '\\b[0-9]{3}[-\\s]?[0-9]{2}[-\\s]?[0-9]{4}\\b',
+      replacementType: 'character',
+      replacementChar: 'X',
+      description: 'Matches US Social Security Numbers',
+      priority: 3,
+      enabled: true,
+      created: new Date().toISOString()
+    },
+    {
+      id: `rule-${Date.now()}-${Math.floor(Math.random() * 10000) + 3}`,
+      name: 'Credit Card Numbers',
+      pattern: null,
+      regex: '\\b(?:[0-9]{4}[-\\s]?){3}[0-9]{4}\\b',
+      replacementType: 'character',
+      replacementChar: 'X',
+      description: 'Matches credit card numbers with 16 digits',
+      priority: 4,
+      enabled: true,
+      created: new Date().toISOString()
+    }
+  ];
+}
+
+/**
  * Process a batch of documents with the same redaction rules
  * @param {Array} documents - Array of document objects to redact
  * @param {Array} rules - Array of redaction rules to apply
@@ -1066,5 +1123,6 @@ export {
   redactDocument,
   redactBatch,
   analyzeDocument,
-  createDefaultRule
+  createDefaultRule,
+  createCommonRules
 };

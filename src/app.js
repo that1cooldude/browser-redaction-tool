@@ -118,6 +118,17 @@ async function initializeApp() {
     ruleManager = new RuleManager();
     appState.redactionRules = ruleManager.getAllRules();
     
+    // Add default rules if no rules exist
+    if (appState.redactionRules.length === 0) {
+      console.log('No rules found, adding default rules from templates');
+      // Add some of the most common default rules
+      ['EMAIL', 'PHONE_US', 'SSN'].forEach(templateName => {
+        ruleManager.createRuleFromTemplate(templateName);
+      });
+      // Update app state with the new rules
+      appState.redactionRules = ruleManager.getAllRules();
+    }
+    
     // Initialize redaction service
     redactionService = initRedactionService(appState);
     
@@ -224,6 +235,19 @@ function setupEventListeners(uiElements) {
     safeAddEventListener(uiElements.addRuleButton, 'click', () => {
       showRuleModal();
     });
+  }
+  
+  // Template selection
+  const useTemplateBtn = document.getElementById('use-template-btn');
+  if (useTemplateBtn) {
+    console.log('Found template button, adding event listener');
+    safeAddEventListener(useTemplateBtn, 'click', (event) => {
+      event.preventDefault();
+      console.log('Template button clicked');
+      showTemplateModal();
+    });
+  } else {
+    console.error('Template button not found');
   }
   
   // Redaction button
@@ -418,8 +442,39 @@ function handleDocumentLoaded(document) {
     documentViewer.loadDocument(document);
   }
   
+  // Start document analysis if the analyzer is available
+  if (redactionAnalyzer && redactionService) {
+    try {
+      // Show analyzing status
+      updateUIStatus('info', `Analyzing document for sensitive information...`);
+      
+      redactionService.analyzeSensitiveData(document)
+        .then(analysisResults => {
+          appState.analysisResults = analysisResults;
+          console.log('Document analysis complete:', analysisResults);
+          
+          // Update analyzer UI if available
+          if (redactionAnalyzer) {
+            redactionAnalyzer.displayResults(analysisResults);
+          }
+          
+          // Show success
+          updateUIStatus('success', `Document analyzed - found ${analysisResults.summary?.total_findings || 0} items of potential sensitive information`);
+        })
+        .catch(error => {
+          console.error('Document analysis failed:', error);
+          updateUIStatus('error', `Document analysis failed: ${error.message}`);
+        });
+    } catch (error) {
+      console.error('Failed to start document analysis:', error);
+    }
+  }
+  
   // Move to the next step
   navigateToStep('rules');
+  
+  // Add to recent documents list if not already there
+  addDocumentToRecentList(document);
 }
 
 /**
@@ -1320,6 +1375,119 @@ async function exportDocument() {
       exportBtn.disabled = false;
       exportBtn.textContent = 'Export Document';
     }
+  }
+}
+
+/**
+ * Show template selection modal
+ */
+function showTemplateModal() {
+  console.log('Opening template modal');
+  
+  // Get modal elements
+  const modal = document.getElementById('rule-template-modal');
+  if (!modal) {
+    console.error('Template modal element not found');
+    return;
+  }
+  
+  // Get template list container
+  const templateListEl = modal.querySelector('.template-list');
+  if (!templateListEl) {
+    console.error('Template list container not found');
+    return;
+  }
+  
+  // Clear existing templates
+  templateListEl.innerHTML = '';
+  
+  // Get templates from rule manager
+  const templates = ruleManager.getTemplates();
+  console.log('Available templates:', templates);
+  
+  // Create template items
+  Object.keys(templates).forEach(key => {
+    const template = templates[key];
+    console.log(`Creating template item for ${key}:`, template);
+    
+    const templateItem = document.createElement('div');
+    templateItem.className = 'template-item';
+    templateItem.dataset.templateId = key;
+    
+    const templateTitle = document.createElement('h4');
+    templateTitle.textContent = template.name;
+    
+    const templateDescription = document.createElement('p');
+    templateDescription.textContent = template.description || '';
+    
+    templateItem.appendChild(templateTitle);
+    templateItem.appendChild(templateDescription);
+    
+    // Add click event to use template
+    templateItem.addEventListener('click', () => {
+      console.log(`Template selected: ${key}`);
+      useTemplate(key);
+      // Hide modal
+      modal.hidden = true;
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+    });
+    
+    templateListEl.appendChild(templateItem);
+  });
+  
+  // Set up close button
+  const closeButton = document.getElementById('template-modal-close');
+  if (closeButton) {
+    closeButton.onclick = () => {
+      console.log('Template modal closed');
+      modal.hidden = true;
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+    };
+  } else {
+    console.error('Close button not found');
+  }
+  
+  // Show modal
+  console.log('Displaying template modal');
+  modal.hidden = false;
+  modal.style.display = 'flex';
+  modal.classList.remove('hidden');
+  
+  // Add global click handler to close when clicking outside the modal content
+  const handleOutsideClick = (e) => {
+    if (e.target === modal) {
+      modal.hidden = true;
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+      document.removeEventListener('click', handleOutsideClick);
+    }
+  };
+  
+  // Add event listener with a slight delay to avoid immediate closure
+  setTimeout(() => {
+    document.addEventListener('click', handleOutsideClick);
+  }, 100);
+}
+
+/**
+ * Use a rule template
+ * @param {string} templateId - ID of the template to use
+ */
+function useTemplate(templateId) {
+  // Create rule from template
+  const result = ruleManager.createRuleFromTemplate(templateId);
+  
+  if (result.success) {
+    // Update rule list
+    updateRuleList(document.getElementById('rule-list'));
+    
+    // Show success message
+    updateUIStatus('success', `Created rule from "${result.rule.name}" template`);
+  } else {
+    // Show error
+    updateUIStatus('error', `Failed to create rule: ${result.error}`);
   }
 }
 

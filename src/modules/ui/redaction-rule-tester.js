@@ -163,6 +163,12 @@ function createTesterUI() {
     <div class="form-group">
       <label for="sample-text">Sample Text to Test</label>
       <textarea id="sample-text" class="form-control" rows="5" placeholder="Enter text to test against the rule..."></textarea>
+      <div class="sample-text-examples">
+        <span class="label">Examples:</span>
+        <button class="sample-example-btn" data-sample="personal">Personal Info</button>
+        <button class="sample-example-btn" data-sample="contact">Contact Info</button>
+        <button class="sample-example-btn" data-sample="finance">Financial Info</button>
+      </div>
     </div>
     <div class="test-actions">
       <button class="btn btn-primary test-button">Test Rule</button>
@@ -281,6 +287,52 @@ function setupEventListeners(testerUI, onRuleTest) {
       e.preventDefault();
       testerUI.testButton.click();
     }
+  });
+  
+  // Sample text examples
+  const sampleButtons = testerUI.element.querySelectorAll('.sample-example-btn');
+  sampleButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const sampleType = button.dataset.sample;
+      let sampleText = '';
+      
+      switch (sampleType) {
+        case 'personal':
+          sampleText = 
+            "Personal Information Example:\n\n" + 
+            "Name: John Smith\n" +
+            "Date of Birth: 05/23/1980\n" +
+            "Social Security Number: 123-45-6789\n" + 
+            "Driver's License: DL98765432\n" +
+            "Passport Number: AB1234567";
+          break;
+          
+        case 'contact':
+          sampleText = 
+            "Contact Information Example:\n\n" +
+            "Email: john.smith@example.com\n" +
+            "Phone: (555) 123-4567\n" +
+            "Mobile: +1 555-987-6543\n" +
+            "Address: 123 Main Street, Apt 4B, New York, NY 10001\n" +
+            "IP Address: 192.168.1.1";
+          break;
+          
+        case 'finance':
+          sampleText = 
+            "Financial Information Example:\n\n" +
+            "Credit Card: 4111 2222 3333 4444\n" +
+            "Expiration: 05/25, CVV: 123\n" +
+            "Bank Account: 123456789012\n" +
+            "Routing Number: 123456789\n" +
+            "Payment Amount: $12,345.67\n" +
+            "Bitcoin Address: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
+          break;
+      }
+      
+      if (sampleText) {
+        testerUI.sampleTextArea.value = sampleText;
+      }
+    });
   });
 }
 

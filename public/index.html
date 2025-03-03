@@ -54,9 +54,14 @@
             <ul class="rule-list" id="rule-list">
               <!-- Rule items will be added here -->
             </ul>
-            <button id="add-rule-btn" class="btn btn-sm btn-outline">
-              <i class="icon-plus"></i> Add Rule
-            </button>
+            <div class="rule-actions">
+              <button id="add-rule-btn" class="btn btn-sm btn-outline">
+                <i class="icon-plus"></i> Add Rule
+              </button>
+              <button id="use-template-btn" class="btn btn-sm btn-outline">
+                <i class="icon-template"></i> Use Template
+              </button>
+            </div>
           </div>
         </div>
 
@@ -279,7 +284,7 @@
     </div>
   </div>
 
-  <div class="modal" id="rule-template-modal" hidden>
+  <div class="modal hidden" id="rule-template-modal" style="display: none;" hidden>
     <div class="modal-content">
       <div class="modal-header">
         <h3>Select Rule Template</h3>

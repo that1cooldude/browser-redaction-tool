@@ -242,11 +242,16 @@ class RuleManager {
     
     // Create a new rule from the template
     const template = this.templates[templateName];
+    
+    // Determine which matching type to use based on template
+    const hasPattern = !!template.pattern;
+    const hasRegex = !!template.regex;
+    
     const rule = {
       id: `rule-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       name: template.name,
-      pattern: template.pattern || null,
-      regex: template.regex || null,
+      pattern: hasPattern ? template.pattern : null,
+      regex: hasRegex ? template.regex : null,
       replacementType: template.replacementType || 'fixed',
       replacement: template.replacement || '[REDACTED]',
       replacementChar: template.replacementChar || 'X',

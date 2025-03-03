@@ -97,28 +97,91 @@ function initDocumentViewer(containerId, onSelectionChange) {
     const pageContainer = document.createElement('div');
     pageContainer.className = 'document-page-container';
     
-    // For now, we'll just display text content since we don't have full rendering yet
+    // Handle original vs redacted view
     if (document.content.pages && document.content.pages.length > 0) {
       const pageIndex = state.currentPage - 1;
       
       if (pageIndex >= 0 && pageIndex < document.content.pages.length) {
-        const page = document.content.pages[pageIndex];
+        // Get the appropriate page content based on view mode
+        let pageContent;
+        
+        if (state.mode === 'redacted' && state.document.redactionResults?.redacted?.pages) {
+          // Display redacted content if available
+          if (pageIndex < state.document.redactionResults.redacted.pages.length) {
+            pageContent = state.document.redactionResults.redacted.pages[pageIndex];
+          } else {
+            console.warn('Redacted page not found');
+            pageContent = document.content.pages[pageIndex];
+          }
+        } else {
+          // Display original content
+          pageContent = document.content.pages[pageIndex];
+        }
         
         // Create page element
         const pageElement = document.createElement('div');
         pageElement.className = 'document-page';
         
-        // Add page content
-        const pageContent = document.createElement('div');
-        pageContent.className = 'document-page-content';
-        pageContent.textContent = page.text;
+        if (document.content.pdfUrl && state.mode === 'original') {
+          // Use PDF viewer for original PDF documents
+          const pdfEmbed = document.createElement('iframe');
+          pdfEmbed.className = 'pdf-embed';
+          pdfEmbed.src = document.content.pdfUrl + '#page=' + state.currentPage;
+          pageElement.appendChild(pdfEmbed);
+        } else {
+          // For text or redacted content
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'document-page-content';
+          
+          if (state.mode === 'redacted' && state.showHighlights) {
+            // Display with highlighted redactions
+            contentDiv.innerHTML = formatRedactedText(pageContent.text);
+          } else {
+            // Display plain text
+            contentDiv.textContent = pageContent.text;
+          }
+          
+          pageElement.appendChild(contentDiv);
+        }
         
-        pageElement.appendChild(pageContent);
         pageContainer.appendChild(pageElement);
       }
     }
     
     elements.contentArea.appendChild(pageContainer);
+  }
+  
+  /**
+   * Format redacted text to highlight the redactions
+   * @param {string} text - The redacted text
+   * @returns {string} - HTML formatted text with highlighted redactions
+   */
+  function formatRedactedText(text) {
+    if (!text) return '';
+    
+    // Replace typical redaction markers with highlighted spans
+    // This is a simple implementation - could be improved to match specific patterns
+    const redactionPatterns = [
+      // Match [REDACTED], [EMAIL], etc.
+      { pattern: /\[(REDACTED|EMAIL|PHONE|SSN|NAME|ADDRESS|IP_ADDRESS|DATE|CREDIT_CARD)[^\]]*\]/g, 
+        replacement: '<span class="redacted-text">$&</span>' },
+      
+      // Match X's (for character replacement)
+      { pattern: /X{4,}/g, 
+        replacement: '<span class="redacted-text">$&</span>' }
+    ];
+    
+    let formattedText = text;
+    
+    // Apply each pattern
+    redactionPatterns.forEach(({ pattern, replacement }) => {
+      formattedText = formattedText.replace(pattern, replacement);
+    });
+    
+    // Convert newlines to <br> tags
+    formattedText = formattedText.replace(/\n/g, '<br>');
+    
+    return formattedText;
   }
   
   /**
