@@ -14,7 +14,8 @@ const RULE_TEMPLATES = {
     regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b',
     replacementType: 'fixed',
     replacement: '[EMAIL]',
-    description: 'Matches standard email addresses'
+    description: 'Matches standard email addresses',
+    category: 'personal'
   },
   
   PHONE_US: {
@@ -22,7 +23,8 @@ const RULE_TEMPLATES = {
     regex: '\\b(\\+?1[-\\s]?)?(\\(?[0-9]{3}\\)?[-\\s]?)?[0-9]{3}[-\\s]?[0-9]{4}\\b',
     replacementType: 'fixed',
     replacement: '[PHONE]',
-    description: 'Matches US phone numbers in various formats'
+    description: 'Matches US phone numbers in various formats',
+    category: 'personal'
   },
   
   SSN: {
@@ -30,14 +32,16 @@ const RULE_TEMPLATES = {
     regex: '\\b[0-9]{3}[-\\s]?[0-9]{2}[-\\s]?[0-9]{4}\\b',
     replacementType: 'character',
     replacementChar: 'X',
-    description: 'Matches US Social Security Numbers'
+    description: 'Matches US Social Security Numbers',
+    category: 'financial'
   },
   
   CREDIT_CARD: {
     name: 'Credit Card Number',
     regex: '\\b(?:[0-9]{4}[-\\s]?){3}[0-9]{4}\\b',
     replacementType: 'format-preserving',
-    description: 'Matches credit card numbers with 16 digits'
+    description: 'Matches credit card numbers with 16 digits',
+    category: 'financial'
   },
   
   DATE: {
@@ -45,7 +49,8 @@ const RULE_TEMPLATES = {
     regex: '\\b(?:[0-9]{1,2}[-/\\s][0-9]{1,2}[-/\\s][0-9]{2,4}|[A-Za-z]{3,9}\\s[0-9]{1,2},?\\s[0-9]{2,4})\\b',
     replacementType: 'fixed',
     replacement: '[DATE]',
-    description: 'Matches dates in various formats'
+    description: 'Matches dates in various formats',
+    category: 'general'
   },
   
   IP_ADDRESS: {
@@ -53,7 +58,8 @@ const RULE_TEMPLATES = {
     regex: '\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b',
     replacementType: 'fixed',
     replacement: '[IP_ADDRESS]',
-    description: 'Matches IPv4 addresses'
+    description: 'Matches IPv4 addresses',
+    category: 'technical'
   },
   
   NAME: {
@@ -61,7 +67,44 @@ const RULE_TEMPLATES = {
     regex: '\\b[A-Z][a-z]+\\s+[A-Z][a-z]+\\b',
     replacementType: 'fixed',
     replacement: '[NAME]',
-    description: 'Matches names in "First Last" format with capitalization'
+    description: 'Matches names in "First Last" format with capitalization',
+    category: 'personal'
+  },
+  
+  ADDRESS: {
+    name: 'Street Address',
+    regex: '\\b\\d+\\s+[A-Za-z0-9\\s,]+\\b(?:Avenue|Lane|Road|Boulevard|Drive|Street|Ave|Dr|Rd|Blvd|Ln|St)\\.?\\b',
+    replacementType: 'fixed',
+    replacement: '[ADDRESS]',
+    description: 'Matches common street address formats',
+    category: 'personal'
+  },
+  
+  FILE_PATH: {
+    name: 'File Path',
+    regex: '\\b(?:[A-Za-z]:\\\\|/(?:home|usr|var|etc|opt|tmp)/)(?:[\\w\\-./\\\\]+)\\b',
+    replacementType: 'fixed',
+    replacement: '[FILE_PATH]',
+    description: 'Matches file system paths (Windows and Unix)',
+    category: 'technical'
+  },
+  
+  AGENCY_NAME: {
+    name: 'Agency Name',
+    regex: '\\b(?:Department of|U\\.S\\.|United States|Federal|National|Office of|Bureau of|Agency for)\\s+[A-Z][\\w\\s]+\\b',
+    replacementType: 'fixed',
+    replacement: '[AGENCY]',
+    description: 'Matches common government agency name patterns',
+    category: 'government'
+  },
+  
+  URL: {
+    name: 'Website URL',
+    regex: '\\b(?:https?://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_\\+.~#?&//=]*)',
+    replacementType: 'fixed',
+    replacement: '[URL]',
+    description: 'Matches website URLs',
+    category: 'technical'
   }
 };
 
@@ -276,7 +319,8 @@ class RuleManager {
    * @returns {Object} - Object containing available templates
    */
   getTemplates() {
-    return { ...this.templates };
+    // Use a deeper clone to ensure no references are shared
+    return JSON.parse(JSON.stringify(this.templates));
   }
   
   /**

@@ -1,11 +1,14 @@
 /**
- * Browser Redaction Tool - Main Application
+ * Prompt Privacy Tool - Main Application
  *
- * This is the entry point for the application, coordinating between modules
- * and managing the application state.
+ * A focused tool for redacting sensitive information in text before sending to AI models.
+ * Emphasizes simplicity and prompt-focused text redaction for privacy protection.
  */
 
 import { initializePyodide } from './pyodide-setup.js';
+import { SimplifiedRuleManager } from './modules/rule-management/simplified-rule-manager.js';
+import { SimplifiedRedactionUI } from './modules/ui/simplified-redaction-ui.js';
+import { redactDocument } from './modules/redaction/redaction-engine.js';
 import { initUploadManager } from './modules/document-upload/upload-manager.js';
 import { 
   initDocumentViewer,
@@ -13,7 +16,8 @@ import {
   initRedactionAnalyzer,
   initRedactionDashboard,
   initImageRedactionEditor,
-  initRedactionRuleTester
+  initRedactionRuleTester,
+  initRedactionRuleSelector
 } from './modules/ui/index.js';
 import { RuleManager } from './modules/rule-management/rule-manager.js';
 import { initRedactionService } from './modules/redaction/redaction-service.js';
@@ -23,18 +27,19 @@ const appState = {
   pyodide: null,
   isInitialized: false,
   isProcessing: false,
-  documents: [],
   redactionRules: [],
-  currentDocument: null,
-  redactionResults: null,
   errors: [],
-  currentStep: 'upload',
-  batchMode: false,
-  batchDocuments: [],
-  analysisResults: null,
-  imageRedactions: [],
   pastedText: null,
-  redactedText: null
+  redactedText: null,
+  customTerms: [],
+  protectionLevel: 'standard',
+  redactionStyle: 'type-label',
+  redactionResults: {
+    redactionCount: 0,
+    categories: [],
+    protectionScore: 0
+  },
+  detailedRedactions: [] // Stores individual redactions for details view
 };
 
 // Service instances
@@ -47,6 +52,7 @@ let redactionAnalyzer = null;
 let redactionDashboard = null;
 let imageEditor = null;
 let ruleTester = null;
+let ruleSelector = null;
 
 /**
  * Initialize the application
@@ -59,49 +65,35 @@ async function initializeApp() {
     
     // Get UI elements - use element IDs for better reliability
     const uiElements = {
-      // Upload elements
-      uploadContainer: document.getElementById('document-uploader'),
-      batchUploaderContainer: document.getElementById('batch-uploader-container'),
-      
-      // Document interaction elements
-      documentViewer: document.getElementById('document-preview'),
-      redactionAnalyzer: document.getElementById('redaction-analyzer'),
-      redactionDashboard: document.getElementById('redaction-dashboard'),
-      imageRedactionEditor: document.getElementById('image-redaction-editor'),
-      redactionRuleTester: document.getElementById('redaction-rule-tester'),
-      
-      // Paste text elements
+      // Text elements
       pasteTextArea: document.getElementById('paste-text'),
-      processTextButton: document.getElementById('process-paste-btn'),
-      redactedOutputContainer: document.getElementById('redacted-output-container'),
       redactedTextArea: document.getElementById('redacted-text'),
+      
+      // Buttons
+      quickRedactBtn: document.getElementById('quick-redact-btn'),
+      processTextButton: document.getElementById('process-paste-btn'),
       copyRedactedButton: document.getElementById('copy-redacted-btn'),
-      saveRedactedButton: document.getElementById('save-redacted-btn'),
+      sendToAIBtn: document.getElementById('send-to-ai-btn'),
       
-      // Rule management
-      ruleList: document.getElementById('rule-list'),
-      addRuleButton: document.getElementById('add-rule-btn'),
+      // UI elements
+      redactionSummary: document.getElementById('redaction-summary'),
+      redactionDetails: document.getElementById('redaction-details'),
+      redactionsList: document.getElementById('redactions-list'),
       
-      // Navigation and workflow
-      workflowSteps: document.querySelectorAll('.workflow-steps .step'),
-      stepContainers: document.querySelectorAll('.step-container'),
-      previewTabs: document.querySelectorAll('.preview-tab'),
-      previewTabContents: document.querySelectorAll('.preview-tab-content'),
-      uploadTabs: document.querySelectorAll('.upload-tab'),
-      uploadTabContents: document.querySelectorAll('.upload-tab-content'),
+      // Custom terms
+      customTermsList: document.getElementById('custom-terms-list'),
+      customTermsInput: document.getElementById('custom-term'),
+      
+      // Modals
+      redactOptionsModal: document.getElementById('redact-options-modal'),
+      customTermModal: document.getElementById('custom-term-modal'),
       
       // Status elements
       pyodideStatus: document.getElementById('pyodide-status'),
-      memoryUsage: document.getElementById('memory-usage'),
-      statusMessage: document.getElementById('status-message'),
-      
-      // Action buttons
-      redactButton: document.getElementById('redact-btn'),
-      exportButton: document.getElementById('export-btn')
+      statusMessage: document.getElementById('status-message')
     };
     
-    // Initialize Pyodide
-    // Initialize Pyodide with proper error handling
+    // Initialize Pyodide (but make it optional)
     try {
       const pyodideStatusEl = document.querySelector('#pyodide-status span');
       if (pyodideStatusEl) {
@@ -121,72 +113,29 @@ async function initializeApp() {
       }
     } catch (pyodideError) {
       console.error('Failed to initialize Pyodide:', pyodideError);
-      updateUIStatus('error', 'Failed to initialize Python environment. Some features may be limited.');
+      updateUIStatus('warning', 'Advanced redaction features limited. Basic features still available.');
     }
     
     // Initialize rule manager
-    ruleManager = new RuleManager();
-    appState.redactionRules = ruleManager.getAllRules();
-    
-    // Add default rules if no rules exist
-    if (appState.redactionRules.length === 0) {
-      console.log('No rules found, adding default rules from templates');
-      // Add some of the most common default rules
-      ['EMAIL', 'PHONE_US', 'SSN'].forEach(templateName => {
-        ruleManager.createRuleFromTemplate(templateName);
-      });
-      // Update app state with the new rules
-      appState.redactionRules = ruleManager.getAllRules();
+    try {
+      ruleManager = new RuleManager();
+    } catch (e) {
+      console.error('Error initializing RuleManager, using simplified fallback', e);
+      // Create a minimal fallback rule manager
+      ruleManager = createFallbackRuleManager();
     }
+    
+    // Add default rules
+    loadDefaultRules();
     
     // Initialize redaction service
-    redactionService = initRedactionService(appState);
-    
-    // Initialize core components with proper error handling
     try {
-      // Initialize document viewer if container exists
-      if (uiElements.documentViewer) {
-        documentViewer = initDocumentViewer('document-preview', handleTextSelection);
-      }
-      
-      // Initialize upload manager with simpler config
-      if (uiElements.uploadContainer) {
-        uploadManager = initUploadManager(appState, {
-          containerId: 'document-uploader',
-          onDocumentLoaded: handleDocumentLoaded
-        });
-      }
-    
-      // Initialize secondary components only if their containers exist
-      if (uiElements.batchUploaderContainer) {
-        batchUploader = initBatchUploader('batch-uploader-container', handleBatchFilesSelected);
-      }
-      
-      if (uiElements.redactionAnalyzer) {
-        redactionAnalyzer = initRedactionAnalyzer('redaction-analyzer', handleCreateRuleFromAnalysis);
-      }
-      
-      if (uiElements.redactionDashboard) {
-        redactionDashboard = initRedactionDashboard('redaction-dashboard');
-      }
-      
-      if (uiElements.imageRedactionEditor) {
-        imageEditor = initImageRedactionEditor('image-redaction-editor', handleImageRedactionComplete);
-      }
-      
-      if (uiElements.redactionRuleTester) {
-        ruleTester = initRedactionRuleTester('redaction-rule-tester', handleRuleTest);
-      }
-    } catch (componentError) {
-      console.error('Failed to initialize UI components:', componentError);
-      updateUIStatus('warning', 'Some UI components could not be initialized. Try refreshing the page.');
+      redactionService = initRedactionService(appState);
+    } catch (e) {
+      console.error('Error initializing redaction service, using fallback', e);
+      // Create a minimal fallback redaction service
+      redactionService = createFallbackRedactionService();
     }
-    
-    // Set up UI event listeners
-    setupEventListeners(uiElements);
-    
-    // Initialize UI elements
-    initializeUI(uiElements);
     
     // Update UI to show app is ready
     updateUIStatus('ready');
@@ -196,6 +145,105 @@ async function initializeApp() {
     console.error('Failed to initialize application:', error);
     updateUIStatus('error', error.message);
   }
+}
+
+/**
+ * Create a fallback rule manager for simpler operation
+ */
+function createFallbackRuleManager() {
+  const templates = {
+    EMAIL: {
+      name: 'Email Address',
+      regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b',
+      replacementType: 'fixed',
+      replacement: '[EMAIL]',
+      description: 'Matches standard email addresses',
+      category: 'personal'
+    },
+    PHONE_US: {
+      name: 'US Phone Number',
+      regex: '\\b(\\+?1[-\\s]?)?(\\(?[0-9]{3}\\)?[-\\s]?)?[0-9]{3}[-\\s]?[0-9]{4}\\b',
+      replacementType: 'fixed',
+      replacement: '[PHONE]',
+      description: 'Matches US phone numbers in various formats',
+      category: 'personal'
+    },
+    SSN: {
+      name: 'Social Security Number',
+      regex: '\\b[0-9]{3}[-\\s]?[0-9]{2}[-\\s]?[0-9]{4}\\b',
+      replacementType: 'character',
+      replacementChar: 'X',
+      description: 'Matches US Social Security Numbers',
+      category: 'financial'
+    }
+  };
+  
+  return {
+    getTemplates: () => templates,
+    getAllRules: () => [],
+    createRuleFromTemplate: (templateName) => ({ success: true, rule: templates[templateName] || {} }),
+    enableCategory: () => {},
+    getCustomTerms: () => [],
+    getAllCategories: () => ['personal', 'financial']
+  };
+}
+
+/**
+ * Create a fallback redaction service for simpler operation
+ */
+function createFallbackRedactionService() {
+  return {
+    previewRedactedText: (text, rules) => {
+      let result = text;
+      // Apply simple regex replacements
+      rules.forEach(rule => {
+        if (rule.regex) {
+          try {
+            const regex = new RegExp(rule.regex, 'g');
+            result = result.replace(regex, rule.replacement || '[REDACTED]');
+          } catch (e) {
+            console.error('Regex error in fallback service', e);
+          }
+        } else if (rule.pattern) {
+          // Simple string replacement
+          const pattern = rule.pattern;
+          result = result.split(pattern).join(rule.replacement || '[REDACTED]');
+        }
+      });
+      return result;
+    },
+    checkTextAgainstRules: () => []
+  };
+}
+
+/**
+ * Load default redaction rules
+ */
+function loadDefaultRules() {
+  // Standard rules that we always want to have available
+  const standardRules = [
+    { 
+      type: 'email',
+      category: 'contact', 
+      regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b', 
+      replacement: '[EMAIL]' 
+    },
+    { 
+      type: 'phone',
+      category: 'contact', 
+      regex: '\\b(\\+\\d{1,2}\\s?)?\\(?\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]?\\d{4}\\b', 
+      replacement: '[PHONE]' 
+    },
+    { 
+      type: 'ssn',
+      category: 'personal', 
+      regex: '\\b\\d{3}-\\d{2}-\\d{4}\\b', 
+      replacement: '[SSN]' 
+    }
+  ];
+  
+  // Set these as our default rules
+  appState.redactionRules = standardRules;
 }
 
 /**
@@ -232,10 +280,63 @@ function setupEventListeners(uiElements) {
     return false;
   };
   
+  // Add listeners for protection categories in sidebar
+  const protectionCategories = document.querySelectorAll('.protection-category');
+  if (protectionCategories && protectionCategories.length) {
+    protectionCategories.forEach(category => {
+      category.addEventListener('click', (e) => {
+        // Get category name from the clicked element
+        const categoryNameEl = e.currentTarget.querySelector('.category-name');
+        const categoryName = categoryNameEl ? categoryNameEl.textContent.trim().toLowerCase() : '';
+        
+        // Toggle active state
+        const isActive = e.currentTarget.classList.contains('active');
+        
+        if (isActive) {
+          // If already active, do nothing (maintain maximum protection)
+          // We could deactivate, but for privacy-first approach, we keep it active
+          updateUIStatus('info', 'For maximum privacy protection, this category will remain active');
+        } else {
+          // Activate category
+          e.currentTarget.classList.add('active');
+          
+          // If we have a rule manager, enable this category
+          if (ruleManager && categoryName) {
+            let categoryId = '';
+            
+            // Map UI category name to rule manager category ID
+            if (categoryName.includes('personal')) {
+              categoryId = 'personal';
+            } else if (categoryName.includes('financial')) {
+              categoryId = 'financial';
+            } else if (categoryName.includes('technical')) {
+              categoryId = 'technical';
+            } else if (categoryName.includes('custom')) {
+              categoryId = 'custom';
+            }
+            
+            if (categoryId) {
+              ruleManager.enableCategory(categoryId);
+              updateUIStatus('success', `${categoryName} protection enabled`);
+            }
+          }
+        }
+      });
+    });
+  };
+  
   // Paste text processing
   if (uiElements.processTextButton) {
     safeAddEventListener(uiElements.processTextButton, 'click', () => {
       processRedactionText();
+    });
+  }
+  
+  // Quick redact button
+  const quickRedactBtn = document.getElementById('quick-redact-btn');
+  if (quickRedactBtn) {
+    safeAddEventListener(quickRedactBtn, 'click', () => {
+      quickRedactText();
     });
   }
   
@@ -360,6 +461,24 @@ function setupEventListeners(uiElements) {
     
     // Toggle batch mode based on selected tab
     appState.batchMode = tab.dataset.tab === 'batch';
+  });
+  
+  // Rules tabs
+  safeAddEventListenerToCollection(uiElements.rulesTabs, 'click', (event) => {
+    const tab = event.currentTarget;
+    if (!tab || !tab.dataset || !tab.dataset.tab) return;
+    
+    // Deactivate all tabs and content
+    uiElements.rulesTabs.forEach(t => t.classList.remove('active'));
+    uiElements.rulesTabContents.forEach(c => c.classList.remove('active'));
+    
+    // Activate selected tab and content
+    tab.classList.add('active');
+    const contentId = `${tab.dataset.tab}-tab`;
+    const contentElement = document.getElementById(contentId);
+    if (contentElement) {
+      contentElement.classList.add('active');
+    }
   });
   
   // Add listeners to component events
@@ -641,6 +760,21 @@ function handleRuleTest(text, ruleId, callback) {
 }
 
 /**
+ * Handle rule selection changes in the rule selector
+ * @param {Array} selectedRules - Selected rule objects
+ */
+function handleRuleSelectionChange(selectedRules) {
+  // Update application state with selected rules
+  appState.redactionRules = selectedRules;
+  
+  // Log selected rules for debugging
+  console.log('Selected redaction rules:', selectedRules.map(rule => rule.name));
+  
+  // Update UI status if needed
+  updateUIStatus('info', `Selected ${selectedRules.length} redaction rules`);
+}
+
+/**
  * Handle text selection in document viewer
  * @param {Selection} selection - Text selection
  * @param {number} page - Page number
@@ -683,6 +817,81 @@ function showCreateRuleFromSelection(selectedText) {
 function showMatchedRules(selectedText, matchedRules) {
   // Simplified for now - just log to console
   console.log(`Text "${selectedText}" matches rules:`, matchedRules.map(rule => rule.name).join(', '));
+}
+
+/**
+ * Handle file uploads for the new document UI
+ * @param {FileList} files - Files from the input or drop event
+ */
+function handleFiles(files) {
+  if (!files || files.length === 0) return;
+  
+  // Show file list container
+  const uploadedFiles = document.getElementById('uploaded-files');
+  if (uploadedFiles) {
+    uploadedFiles.style.display = 'block';
+  }
+  
+  // Get file list container
+  const fileList = document.getElementById('upload-file-list');
+  if (!fileList) return;
+  
+  // Clear existing files if needed
+  // fileList.innerHTML = '';
+  
+  // Get process button and enable it
+  const processFilesBtn = document.getElementById('process-files-btn');
+  if (processFilesBtn) {
+    processFilesBtn.disabled = false;
+  }
+  
+  // Add files to list
+  Array.from(files).forEach(file => {
+    // Create file list item
+    const fileItem = document.createElement('li');
+    fileItem.className = 'file-item';
+    
+    // Format file size
+    const sizeInKB = Math.round(file.size / 1024);
+    const sizeDisplay = sizeInKB < 1024 ? `${sizeInKB} KB` : `${(sizeInKB / 1024).toFixed(1)} MB`;
+    
+    // Add file details
+    fileItem.innerHTML = `
+      <div class="file-item-info">
+        <span class="file-item-name">${file.name}</span>
+        <span class="file-item-size">${sizeDisplay}</span>
+      </div>
+    `;
+    
+    // Add to list
+    fileList.appendChild(fileItem);
+    
+    // Also create a pseudo document for the app state (simplified)
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    const document = {
+      id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      file: file,
+      metadata: {
+        name: file.name,
+        size: file.size,
+        extension: fileExtension,
+        type: file.type,
+        created: new Date(),
+        modified: new Date(file.lastModified)
+      }
+    };
+    
+    // Add to app state
+    appState.documents.push(document);
+    
+    // If this is the first file, set it as current document
+    if (!appState.currentDocument) {
+      appState.currentDocument = document;
+    }
+  });
+  
+  // Update status
+  updateUIStatus('success', `${files.length} ${files.length === 1 ? 'file' : 'files'} selected`);
 }
 
 /**
@@ -853,60 +1062,124 @@ function navigateToStep(step) {
  * Update the list of redaction rules
  * @param {HTMLElement} ruleListElement - Rule list element
  */
-function updateRuleList(ruleListElement) {
-  if (!ruleListElement) return;
+/**
+ * Update the protection categories in the sidebar
+ */
+function updateProtectionCategories() {
+  // Get all protection categories from the DOM
+  const personalCategory = document.querySelector('.protection-category:nth-child(1)');
+  const financialCategory = document.querySelector('.protection-category:nth-child(2)');
+  const technicalCategory = document.querySelector('.protection-category:nth-child(3)');
+  const customCategory = document.querySelector('.protection-category:nth-child(4)');
   
-  // Clear current list
-  ruleListElement.innerHTML = '';
-  
-  // Get rules from rule manager
-  appState.redactionRules = ruleManager.getAllRules();
-  
-  // Create rule items
-  appState.redactionRules.forEach(rule => {
-    const ruleItem = document.createElement('li');
-    ruleItem.className = 'rule-item';
-    ruleItem.dataset.ruleId = rule.id;
-    
-    const ruleName = document.createElement('span');
-    ruleName.className = 'rule-item-name';
-    ruleName.textContent = rule.name;
-    
-    const ruleActions = document.createElement('div');
-    ruleActions.className = 'rule-actions';
-    
-    const editButton = document.createElement('button');
-    editButton.className = 'btn-icon';
-    editButton.innerHTML = '<i class="icon-edit"></i>';
-    editButton.title = 'Edit Rule';
-    editButton.addEventListener('click', () => {
-      showRuleModal(rule);
-    });
-    
-    const deleteButton = document.createElement('button');
-    deleteButton.className = 'btn-icon';
-    deleteButton.innerHTML = '<i class="icon-delete"></i>';
-    deleteButton.title = 'Delete Rule';
-    deleteButton.addEventListener('click', () => {
-      deleteRule(rule.id);
-    });
-    
-    ruleActions.appendChild(editButton);
-    ruleActions.appendChild(deleteButton);
-    
-    ruleItem.appendChild(ruleName);
-    ruleItem.appendChild(ruleActions);
-    
-    ruleListElement.appendChild(ruleItem);
-  });
-  
-  // Add empty state if no rules
-  if (appState.redactionRules.length === 0) {
-    const emptyState = document.createElement('li');
-    emptyState.className = 'rule-item empty-state';
-    emptyState.textContent = 'No rules added yet. Click "Add Rule" to create one.';
-    ruleListElement.appendChild(emptyState);
+  // If we have the rule manager, update the counts and active states
+  if (ruleManager) {
+    try {
+      // Get all categories from rule manager
+      const allCategories = ruleManager.getAllCategories ? ruleManager.getAllCategories() : [];
+      
+      // Get all templates
+      const templates = ruleManager.getTemplates ? ruleManager.getTemplates() : {};
+      
+      // Get custom terms
+      const customTerms = ruleManager.getCustomTerms ? ruleManager.getCustomTerms() : [];
+      
+      // Count templates by category
+      const templatesByCategory = {};
+      
+      Object.keys(templates).forEach(key => {
+        const template = templates[key];
+        const category = template.category || 'other';
+        
+        if (!templatesByCategory[category]) {
+          templatesByCategory[category] = [];
+        }
+        
+        templatesByCategory[category].push(template);
+      });
+      
+      // Update personal category
+      if (personalCategory) {
+        const countElement = personalCategory.querySelector('.category-count');
+        if (countElement) {
+          const count = templatesByCategory.personal ? templatesByCategory.personal.length : 0;
+          countElement.textContent = `${count} types`;
+        }
+      }
+      
+      // Update financial category
+      if (financialCategory) {
+        const countElement = financialCategory.querySelector('.category-count');
+        if (countElement) {
+          const count = templatesByCategory.financial ? templatesByCategory.financial.length : 0;
+          countElement.textContent = `${count} types`;
+        }
+      }
+      
+      // Update technical category
+      if (technicalCategory) {
+        const countElement = technicalCategory.querySelector('.category-count');
+        if (countElement) {
+          const count = templatesByCategory.technical ? templatesByCategory.technical.length : 0;
+          countElement.textContent = `${count} types`;
+        }
+      }
+      
+      // Update custom terms category
+      if (customCategory) {
+        const countElement = customCategory.querySelector('.category-count');
+        if (countElement) {
+          countElement.textContent = `${customTerms.length} terms`;
+        }
+      }
+      
+      // Update protection level indicator
+      const protectionLevelLabel = document.querySelector('.protection-level-label');
+      const protectionLevelFill = document.querySelector('.protection-level-fill');
+      
+      if (protectionLevelLabel && protectionLevelFill) {
+        const currentSensitivity = ruleManager.getCurrentSensitivity ? 
+          ruleManager.getCurrentSensitivity() : 
+          { level: 'maximum', description: 'Maximum protection enabled' };
+        
+        // Update label text
+        protectionLevelLabel.textContent = currentSensitivity.level.charAt(0).toUpperCase() + 
+          currentSensitivity.level.slice(1) + ' Protection';
+        
+        // Update fill width based on sensitivity level
+        let fillPercentage = 100; // Default to maximum (100%)
+        
+        switch (currentSensitivity.level) {
+          case 'basic':
+            fillPercentage = 25;
+            break;
+          case 'moderate':
+            fillPercentage = 50;
+            break;
+          case 'high':
+            fillPercentage = 75;
+            break;
+          case 'maximum':
+          default:
+            fillPercentage = 100;
+            break;
+        }
+        
+        protectionLevelFill.style.width = `${fillPercentage}%`;
+      }
+    } catch (error) {
+      console.error('Error updating protection categories:', error);
+    }
   }
+}
+
+// Legacy function for backwards compatibility
+function updateRuleList(ruleListElement) {
+  // This function is kept for backwards compatibility
+  // It's no longer needed with the new UI, but we keep it to avoid errors
+  
+  // Update the protection categories instead
+  updateProtectionCategories();
 }
 
 /**
@@ -1436,35 +1709,66 @@ function showTemplateModal() {
   const templates = ruleManager.getTemplates();
   console.log('Available templates:', templates);
   
-  // Create template items
+  // Group templates by category
+  const templatesByCategory = {};
+  
   Object.keys(templates).forEach(key => {
     const template = templates[key];
-    console.log(`Creating template item for ${key}:`, template);
+    const category = template.category || 'general';
     
-    const templateItem = document.createElement('div');
-    templateItem.className = 'template-item';
-    templateItem.dataset.templateId = key;
+    if (!templatesByCategory[category]) {
+      templatesByCategory[category] = [];
+    }
     
-    const templateTitle = document.createElement('h4');
-    templateTitle.textContent = template.name;
-    
-    const templateDescription = document.createElement('p');
-    templateDescription.textContent = template.description || '';
-    
-    templateItem.appendChild(templateTitle);
-    templateItem.appendChild(templateDescription);
-    
-    // Add click event to use template
-    templateItem.addEventListener('click', () => {
-      console.log(`Template selected: ${key}`);
-      useTemplate(key);
-      // Hide modal
-      modal.hidden = true;
-      modal.style.display = 'none';
-      modal.classList.add('hidden');
+    templatesByCategory[category].push({
+      id: key,
+      ...template
     });
+  });
+  
+  // Function to create a category heading
+  const createCategoryHeading = (categoryName) => {
+    const formattedName = categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
+    const heading = document.createElement('div');
+    heading.className = 'template-category-heading';
+    heading.textContent = formattedName;
+    return heading;
+  };
+  
+  // Create template items grouped by category
+  Object.keys(templatesByCategory).forEach(category => {
+    // Add category heading
+    templateListEl.appendChild(createCategoryHeading(category));
     
-    templateListEl.appendChild(templateItem);
+    // Add templates for this category
+    templatesByCategory[category].forEach(template => {
+      console.log(`Creating template item for ${template.id}:`, template);
+      
+      const templateItem = document.createElement('div');
+      templateItem.className = 'template-item';
+      templateItem.dataset.templateId = template.id;
+      
+      const templateTitle = document.createElement('h4');
+      templateTitle.textContent = template.name;
+      
+      const templateDescription = document.createElement('p');
+      templateDescription.textContent = template.description || '';
+      
+      templateItem.appendChild(templateTitle);
+      templateItem.appendChild(templateDescription);
+      
+      // Add click event to use template
+      templateItem.addEventListener('click', () => {
+        console.log(`Template selected: ${template.id}`);
+        useTemplate(template.id);
+        // Hide modal
+        modal.hidden = true;
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      });
+      
+      templateListEl.appendChild(templateItem);
+    });
   });
   
   // Set up close button
@@ -1535,9 +1839,29 @@ window.addEventListener('keydown', function(e) {
 });
 
 /**
- * Process text from the paste area and apply redaction rules
+ * Process text from the paste area and apply redaction rules with options dialog
  */
 function processRedactionText() {
+  try {
+    // Show the options modal
+    const optionsModal = document.getElementById('redact-options-modal');
+    if (optionsModal) {
+      optionsModal.style.display = 'flex';
+      optionsModal.classList.remove('hidden');
+    } else {
+      // Fallback to quick redaction if modal not found
+      quickRedactText();
+    }
+  } catch (error) {
+    console.error('Process redaction error:', error);
+    updateUIStatus('error', `Failed to open options: ${error.message}`);
+  }
+}
+
+/**
+ * Apply redaction with the selected options from the modal
+ */
+function applyRedactionWithOptions() {
   try {
     // Get text from textarea
     const pasteTextArea = document.getElementById('paste-text');
@@ -1550,43 +1874,590 @@ function processRedactionText() {
       throw new Error('Please paste some text to redact');
     }
     
-    // Check if we have rules
-    if (!appState.redactionRules || appState.redactionRules.length === 0) {
-      throw new Error('No redaction rules defined. Please add at least one rule.');
-    }
-    
     // Store original text in app state
     appState.pastedText = text;
+    
+    // Get selected options
+    const redactionStyle = document.getElementById('redaction-style').value;
+    appState.redactionStyle = redactionStyle;
+    
+    // Build redaction rules based on selected categories
+    const selectedCategories = [];
+    const rules = [];
+    
+    // Personal info
+    if (document.getElementById('personal-info').checked) {
+      selectedCategories.push('personal');
+      
+      if (document.getElementById('names').checked) {
+        rules.push({ 
+          category: 'personal', 
+          type: 'names',
+          regex: '\\b[A-Z][a-z]+ [A-Z][a-z]+\\b', 
+          replacement: redactionStyle === 'type-label' ? '[NAME]' : '[REDACTED]' 
+        });
+      }
+      
+      if (document.getElementById('dates').checked) {
+        rules.push({ 
+          category: 'personal', 
+          type: 'dates',
+          regex: '\\b(0?[1-9]|1[0-2])[\\/\\-](0?[1-9]|[12][0-9]|3[01])[\\/\\-](19|20)\\d{2}\\b', 
+          replacement: redactionStyle === 'type-label' ? '[DATE]' : '[REDACTED]' 
+        });
+      }
+      
+      if (document.getElementById('ids').checked) {
+        rules.push({ 
+          category: 'personal', 
+          type: 'id',
+          regex: '\\b\\d{3}-\\d{2}-\\d{4}\\b', // SSN
+          replacement: redactionStyle === 'type-label' ? '[SSN]' : '[REDACTED]' 
+        });
+      }
+    }
+    
+    // Contact info
+    if (document.getElementById('contact-info').checked) {
+      selectedCategories.push('contact');
+      
+      if (document.getElementById('emails').checked) {
+        rules.push({ 
+          category: 'contact', 
+          type: 'email',
+          regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b', 
+          replacement: redactionStyle === 'type-label' ? '[EMAIL]' : '[REDACTED]' 
+        });
+      }
+      
+      if (document.getElementById('phones').checked) {
+        rules.push({ 
+          category: 'contact', 
+          type: 'phone',
+          regex: '\\b(\\+\\d{1,2}\\s?)?\\(?\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]?\\d{4}\\b', 
+          replacement: redactionStyle === 'type-label' ? '[PHONE]' : '[REDACTED]' 
+        });
+      }
+      
+      if (document.getElementById('addresses').checked) {
+        rules.push({ 
+          category: 'contact', 
+          type: 'address',
+          regex: '\\b\\d+\\s[A-Z][a-z]+\\s(St|Ave|Rd|Blvd|Dr|Ln|Ct|Way)(\\.|,)?\\s[A-Z][a-z]+,\\s[A-Z]{2}\\s\\d{5}\\b', 
+          replacement: redactionStyle === 'type-label' ? '[ADDRESS]' : '[REDACTED]' 
+        });
+      }
+    }
+    
+    // Financial info
+    if (document.getElementById('financial-info').checked) {
+      selectedCategories.push('financial');
+      
+      if (document.getElementById('credit-card').checked) {
+        rules.push({ 
+          category: 'financial', 
+          type: 'credit-card',
+          regex: '\\b(?:\\d{4}[- ]?){3}\\d{4}\\b', 
+          replacement: redactionStyle === 'type-label' ? '[CREDIT_CARD]' : '[REDACTED]' 
+        });
+      }
+      
+      if (document.getElementById('bank-accounts').checked) {
+        rules.push({ 
+          category: 'financial', 
+          type: 'bank-account',
+          regex: '\\b\\d{8,17}\\b', 
+          replacement: redactionStyle === 'type-label' ? '[ACCOUNT_NUM]' : '[REDACTED]' 
+        });
+      }
+    }
+    
+    // Add custom terms
+    if (appState.customTerms.length > 0) {
+      selectedCategories.push('custom');
+      
+      appState.customTerms.forEach(term => {
+        if (term.term.trim()) {
+          rules.push({
+            category: 'custom',
+            type: 'custom-term',
+            pattern: term.term.trim(),
+            replacement: term.replacement || (redactionStyle === 'type-label' ? '[CUSTOM]' : '[REDACTED]')
+          });
+        }
+      });
+    }
+    
+    // Update appState with selected rules
+    appState.redactionRules = rules;
     
     // Show processing status
     updateUIStatus('processing', 'Applying redaction rules to text...');
     
     // Apply redaction
     if (redactionService && typeof redactionService.previewRedactedText === 'function') {
-      // Use the redaction service to process the text
-      const redactedText = redactionService.previewRedactedText(text, appState.redactionRules);
-      appState.redactedText = redactedText;
+      // Process the redaction
+      const result = processRedaction(text, rules, redactionStyle);
       
-      // Update the redacted text area
-      const redactedTextArea = document.getElementById('redacted-text');
-      if (redactedTextArea) {
-        redactedTextArea.value = redactedText;
-      }
+      // Update UI
+      updateRedactionResults(result);
       
-      // Show the redacted output container
-      const redactedOutputContainer = document.getElementById('redacted-output-container');
-      if (redactedOutputContainer) {
-        redactedOutputContainer.style.display = 'block';
+      // Close the modal
+      const modal = document.getElementById('redact-options-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
       }
       
       // Show success message
-      updateUIStatus('success', 'Text redacted successfully. Ready for use in LLM prompts.');
+      updateUIStatus('success', 'Text redacted successfully. Ready for use in AI prompts.');
+      
+      // Show redaction details
+      const redactionDetails = document.getElementById('redaction-details');
+      if (redactionDetails) {
+        redactionDetails.style.display = 'block';
+      }
     } else {
       throw new Error('Redaction service not available. Please try again later.');
     }
   } catch (error) {
-    console.error('Text redaction error:', error);
+    console.error('Redaction error:', error);
     updateUIStatus('error', `Failed to redact text: ${error.message}`);
+  }
+}
+
+/**
+ * Process redaction and return detailed results
+ * @param {string} text - Text to redact
+ * @param {Array} rules - Redaction rules
+ * @param {string} style - Redaction style
+ * @returns {Object} - Results with redacted text and statistics
+ */
+function processRedaction(text, rules, style) {
+  const detailedRedactions = [];
+  let redactedText = text;
+  
+  // Apply each rule and track replacements
+  rules.forEach(rule => {
+    if (rule.pattern) {
+      // Simple pattern matching
+      let position = 0;
+      while ((position = redactedText.indexOf(rule.pattern, position)) !== -1) {
+        const originalText = redactedText.substring(position, position + rule.pattern.length);
+        
+        // Create replacement text based on style
+        let replacement = rule.replacement;
+        if (style === 'black-box') {
+          replacement = '█'.repeat(originalText.length);
+        } else if (style === 'character') {
+          replacement = 'X'.repeat(originalText.length);
+        }
+        
+        // Track this redaction
+        detailedRedactions.push({
+          type: rule.type || 'custom',
+          category: rule.category,
+          originalText: originalText,
+          position: position
+        });
+        
+        // Apply replacement
+        redactedText = 
+          redactedText.substring(0, position) + 
+          replacement + 
+          redactedText.substring(position + rule.pattern.length);
+          
+        position += replacement.length;
+      }
+    } else if (rule.regex) {
+      // Regex matching
+      try {
+        const regex = new RegExp(rule.regex, 'g');
+        let match;
+        let offset = 0;
+        
+        // We need to reapply the regex for each match because the string length changes
+        let workingText = redactedText;
+        
+        while ((match = regex.exec(workingText)) !== null) {
+          const originalText = match[0];
+          const adjustedPosition = match.index + offset;
+          
+          // Create replacement text based on style
+          let replacement = rule.replacement;
+          if (style === 'black-box') {
+            replacement = '█'.repeat(originalText.length);
+          } else if (style === 'character') {
+            replacement = 'X'.repeat(originalText.length);
+          }
+          
+          // Track this redaction
+          detailedRedactions.push({
+            type: rule.type || 'regex',
+            category: rule.category,
+            originalText: originalText,
+            position: adjustedPosition
+          });
+          
+          // Apply replacement
+          redactedText = 
+            redactedText.substring(0, adjustedPosition) + 
+            replacement + 
+            redactedText.substring(adjustedPosition + originalText.length);
+            
+          // Reset regex and update working text
+          offset += (replacement.length - originalText.length);
+          workingText = redactedText;
+          regex.lastIndex = 0;
+        }
+      } catch (error) {
+        console.error('Invalid regex:', error);
+      }
+    }
+  });
+  
+  // Calculate categories covered
+  const categories = [...new Set(detailedRedactions.map(r => r.category))];
+  
+  // Calculate protection score (simplistic approach)
+  const protectionScore = Math.min(100, Math.round((detailedRedactions.length / (text.length / 100)) * 10));
+  
+  return {
+    redactedText,
+    redactionCount: detailedRedactions.length,
+    categories: categories,
+    protectionScore: protectionScore,
+    detailedRedactions: detailedRedactions
+  };
+}
+
+/**
+ * Quick redact text with default rules based on selected protection level
+ */
+function quickRedactText() {
+  try {
+    // Get text from textarea
+    const pasteTextArea = document.getElementById('paste-text');
+    if (!pasteTextArea) {
+      throw new Error('Paste text area not found');
+    }
+    
+    const text = pasteTextArea.value.trim();
+    if (!text) {
+      throw new Error('Please paste some text to redact');
+    }
+    
+    // Store original text in app state
+    appState.pastedText = text;
+    
+    // Show processing status
+    updateUIStatus('processing', 'Applying quick redaction...');
+    
+    // Get protection level
+    const protectionLevel = document.querySelector('input[name="protection-level"]:checked')?.value || 'standard';
+    appState.protectionLevel = protectionLevel;
+    
+    // Create rules based on protection level
+    const rules = [
+      // Standard level - Basic PII
+      { 
+        category: 'contact', 
+        type: 'email',
+        regex: '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b', 
+        replacement: '[EMAIL]' 
+      },
+      { 
+        category: 'contact', 
+        type: 'phone',
+        regex: '\\b(\\+\\d{1,2}\\s?)?\\(?\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]?\\d{4}\\b', 
+        replacement: '[PHONE]' 
+      },
+      { 
+        category: 'personal', 
+        type: 'ssn',
+        regex: '\\b\\d{3}-\\d{2}-\\d{4}\\b', 
+        replacement: '[SSN]' 
+      },
+      { 
+        category: 'personal', 
+        type: 'names',
+        regex: '\\b[A-Z][a-z]+ [A-Z][a-z]+\\b', 
+        replacement: '[NAME]' 
+      }
+    ];
+    
+    // High protection adds more rules
+    if (protectionLevel === 'high' || protectionLevel === 'maximum') {
+      rules.push(
+        { 
+          category: 'financial', 
+          type: 'credit-card',
+          regex: '\\b(?:\\d{4}[- ]?){3}\\d{4}\\b', 
+          replacement: '[CREDIT_CARD]' 
+        },
+        { 
+          category: 'personal', 
+          type: 'dates',
+          regex: '\\b(0?[1-9]|1[0-2])[\\/\\-](0?[1-9]|[12][0-9]|3[01])[\\/\\-](19|20)\\d{2}\\b', 
+          replacement: '[DATE]' 
+        },
+        { 
+          category: 'contact', 
+          type: 'address',
+          regex: '\\b\\d+\\s[A-Z][a-z]+\\s(St|Ave|Rd|Blvd|Dr|Ln|Ct|Way)(\\.|,)?\\s[A-Z][a-z]+,\\s[A-Z]{2}\\s\\d{5}\\b', 
+          replacement: '[ADDRESS]' 
+        },
+        {
+          category: 'personal',
+          type: 'age',
+          regex: '\\b(\\d{1,2}) years old\\b',
+          replacement: '[AGE]'
+        }
+      );
+    }
+    
+    // Maximum protection adds even more rules
+    if (protectionLevel === 'maximum') {
+      rules.push(
+        {
+          category: 'location',
+          type: 'location',
+          regex: '\\b[A-Z][a-z]+(,\\s[A-Z]{2})?\\b',
+          replacement: '[LOCATION]'
+        },
+        {
+          category: 'personal',
+          type: 'gender',
+          regex: '\\b(male|female|man|woman|boy|girl|non-binary|transgender)\\b',
+          replacement: '[GENDER]'
+        },
+        {
+          category: 'location',
+          type: 'ip',
+          regex: '\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b',
+          replacement: '[IP_ADDRESS]'
+        },
+        {
+          category: 'personal',
+          type: 'job-title',
+          regex: '\\b[A-Z][a-z]+ (Officer|Manager|Director|President|Specialist|Engineer|Architect|Analyst|Executive|Assistant)\\b',
+          replacement: '[JOB_TITLE]'
+        }
+      );
+    }
+    
+    // Add custom terms
+    if (appState.customTerms && appState.customTerms.length > 0) {
+      appState.customTerms.forEach(term => {
+        if (term.term && term.term.trim()) {
+          rules.push({
+            category: 'custom',
+            type: 'custom-term',
+            pattern: term.term.trim(),
+            replacement: term.replacement || '[CUSTOM]'
+          });
+        }
+      });
+    }
+    
+    // Process the redaction
+    const result = processRedaction(text, rules, 'type-label');
+    
+    // Update UI
+    updateRedactionResults(result);
+    
+    // Show success message
+    updateUIStatus('success', 'Quick redaction complete! Ready for AI prompts.');
+    
+    // Show redaction details
+    const redactionDetails = document.getElementById('redaction-details');
+    if (redactionDetails) {
+      redactionDetails.style.display = 'block';
+    }
+    
+    // Add success animation to output
+    const outputSection = document.querySelector('.text-output-section');
+    if (outputSection) {
+      outputSection.classList.add('pulse-success');
+      // Remove animation class after it completes
+      setTimeout(() => {
+        outputSection.classList.remove('pulse-success');
+      }, 1500);
+    }
+  } catch (error) {
+    console.error('Quick redaction error:', error);
+    updateUIStatus('error', `Failed to redact text: ${error.message}`);
+  }
+}
+
+/**
+ * Update the UI with redaction results
+ * @param {Object} result - The redaction results
+ */
+function updateRedactionResults(result) {
+  try {
+    // Fallback defaults if results are missing properties
+    const safeResult = {
+      redactedText: result.redactedText || 'Error processing text',
+      redactionCount: result.redactionCount || 0,
+      categories: result.categories || [],
+      protectionScore: result.protectionScore || 0,
+      detailedRedactions: result.detailedRedactions || []
+    };
+    
+    // Update app state
+    appState.redactedText = safeResult.redactedText;
+    appState.redactionResults.redactionCount = safeResult.redactionCount;
+    appState.redactionResults.categories = safeResult.categories;
+    appState.redactionResults.protectionScore = safeResult.protectionScore;
+    appState.detailedRedactions = safeResult.detailedRedactions;
+    
+    // Update the redacted text area
+    const redactedTextArea = document.getElementById('redacted-text');
+    if (redactedTextArea) {
+      redactedTextArea.value = safeResult.redactedText;
+    }
+    
+    // Update summary stats - check elements exist first
+    const totalRedactions = document.getElementById('total-redactions');
+    if (totalRedactions) {
+      totalRedactions.textContent = safeResult.redactionCount;
+    }
+    
+    const protectedCategories = document.getElementById('protected-categories');
+    if (protectedCategories) {
+      protectedCategories.textContent = safeResult.categories.length;
+    }
+    
+    const protectionScore = document.getElementById('protection-score');
+    if (protectionScore) {
+      protectionScore.textContent = `${safeResult.protectionScore}%`;
+    }
+    
+    // Update redactions list
+    updateRedactionsList(safeResult.detailedRedactions);
+  } catch (error) {
+    console.error('Error updating redaction results:', error);
+  }
+}
+
+/**
+ * Update the list of redactions in the details panel
+ * @param {Array} redactions - The detailed redactions
+ */
+function updateRedactionsList(redactions) {
+  const redactionsList = document.getElementById('redactions-list');
+  if (!redactionsList) return;
+  
+  // Clear existing items
+  redactionsList.innerHTML = '';
+  
+  // Check if we have redactions
+  if (!redactions || redactions.length === 0) {
+    const emptyItem = document.createElement('li');
+    emptyItem.className = 'redaction-item-empty';
+    emptyItem.textContent = 'No redactions to display';
+    redactionsList.appendChild(emptyItem);
+    return;
+  }
+  
+  // Add each redaction to the list
+  redactions.forEach((redaction, index) => {
+    try {
+      const item = document.createElement('li');
+      item.className = 'redaction-item';
+      item.dataset.index = index;
+      
+      const itemInfo = document.createElement('div');
+      itemInfo.className = 'redaction-item-info';
+      
+      const typeSpan = document.createElement('span');
+      typeSpan.className = 'redaction-type';
+      const typeName = redaction.type ? 
+        redaction.type.charAt(0).toUpperCase() + redaction.type.slice(1) : 
+        'Unknown';
+      typeSpan.textContent = typeName;
+      
+      const textSpan = document.createElement('span');
+      textSpan.className = 'redaction-text';
+      textSpan.textContent = redaction.originalText || '[Text unavailable]';
+      
+      itemInfo.appendChild(typeSpan);
+      itemInfo.appendChild(textSpan);
+      
+      const itemActions = document.createElement('div');
+      itemActions.className = 'redaction-item-actions';
+      
+      const restoreBtn = document.createElement('button');
+      restoreBtn.className = 'restore-btn';
+      restoreBtn.title = 'Restore';
+      restoreBtn.textContent = 'Restore';
+      restoreBtn.dataset.index = index;
+      restoreBtn.addEventListener('click', () => restoreRedaction(index));
+      
+      itemActions.appendChild(restoreBtn);
+      
+      item.appendChild(itemInfo);
+      item.appendChild(itemActions);
+      
+      redactionsList.appendChild(item);
+    } catch (error) {
+      console.error('Error creating redaction item:', error);
+    }
+  });
+}
+
+/**
+ * Restore a redacted item
+ * @param {number} index - The index of the redaction to restore
+ */
+function restoreRedaction(index) {
+  try {
+    const redaction = appState.detailedRedactions[index];
+    if (!redaction) return;
+    
+    // Remove from the list of redactions
+    appState.detailedRedactions.splice(index, 1);
+    
+    // Reapply all redactions from scratch on the original text
+    const result = processAllRedactions();
+    
+    // Update UI
+    updateRedactionResults(result);
+    
+    // Success message
+    updateUIStatus('success', 'Redaction removed successfully');
+  } catch (error) {
+    console.error('Error restoring redaction:', error);
+    updateUIStatus('error', 'Failed to restore redaction');
+  }
+}
+
+/**
+ * Update the example with actual redacted text if available
+ * @param {string} originalText - Original text
+ * @param {string} redactedText - Redacted text
+ */
+function updateExampleWithActualText(originalText, redactedText) {
+  // Get a short excerpt from the original text (first 100 chars)
+  let excerpt = originalText.substring(0, 100);
+  if (originalText.length > 100) {
+    excerpt += '...';
+  }
+  
+  // Get the corresponding redacted excerpt
+  let redactedExcerpt = redactedText.substring(0, excerpt.length);
+  if (redactedText.length > excerpt.length) {
+    redactedExcerpt += '...';
+  }
+  
+  // Update the example text
+  const originalExample = document.getElementById('example-original-text');
+  const redactedExample = document.getElementById('example-redacted-text');
+  
+  if (originalExample && redactedExample) {
+    originalExample.textContent = excerpt;
+    redactedExample.textContent = redactedExcerpt;
   }
 }
 
@@ -1676,6 +2547,352 @@ function saveRedactedTextAsDocument() {
   }
 }
 
+/**
+ * Process all redactions from scratch on original text
+ * This is used when restoring a redaction
+ */
+function processAllRedactions() {
+  try {
+    const text = appState.pastedText;
+    if (!text) {
+      console.error('No original text to process');
+      return {
+        redactedText: '',
+        redactionCount: 0,
+        categories: [],
+        protectionScore: 0,
+        detailedRedactions: []
+      };
+    }
+    
+    const rules = appState.redactionRules;
+    const style = appState.redactionStyle || 'type-label';
+    
+    return processRedaction(text, rules, style);
+  } catch (error) {
+    console.error('Error in processAllRedactions:', error);
+    // Return empty results
+    return {
+      redactedText: appState.pastedText || '',
+      redactionCount: 0,
+      categories: [],
+      protectionScore: 0,
+      detailedRedactions: []
+    };
+  }
+}
+
+/**
+ * Handle adding a custom term
+ */
+function addCustomTerm() {
+  const termInput = document.getElementById('custom-term');
+  const replacementInput = document.getElementById('custom-replacement');
+  
+  if (!termInput || !termInput.value.trim()) {
+    updateUIStatus('error', 'Please enter a term to redact');
+    return;
+  }
+  
+  // Add to custom terms list
+  appState.customTerms.push({
+    term: termInput.value.trim(),
+    replacement: replacementInput.value.trim() || null
+  });
+  
+  // Update UI
+  updateCustomTermsUI();
+  
+  // Close modal
+  const modal = document.getElementById('custom-term-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.add('hidden');
+  }
+  
+  // Clear inputs
+  termInput.value = '';
+  replacementInput.value = '';
+  
+  // Show success message
+  updateUIStatus('success', 'Custom term added successfully');
+}
+
+/**
+ * Update the custom terms UI
+ */
+function updateCustomTermsUI() {
+  const termsList = document.getElementById('custom-terms-list');
+  if (!termsList) return;
+  
+  // Clear existing items except the last one (which is the template)
+  termsList.innerHTML = '';
+  
+  // Add each term to the list
+  appState.customTerms.forEach((term, index) => {
+    const termEntry = document.createElement('div');
+    termEntry.className = 'custom-term-entry';
+    
+    const termInput = document.createElement('input');
+    termInput.type = 'text';
+    termInput.className = 'form-control custom-term-input';
+    termInput.value = term.term;
+    termInput.readOnly = true;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-term-btn';
+    removeBtn.textContent = '×';
+    removeBtn.dataset.index = index;
+    removeBtn.addEventListener('click', () => removeCustomTerm(index));
+    
+    termEntry.appendChild(termInput);
+    termEntry.appendChild(removeBtn);
+    
+    termsList.appendChild(termEntry);
+  });
+  
+  // Add an empty one at the end for adding new terms
+  const newTermEntry = document.createElement('div');
+  newTermEntry.className = 'custom-term-entry';
+  
+  const newTermInput = document.createElement('input');
+  newTermInput.type = 'text';
+  newTermInput.className = 'form-control custom-term-input';
+  newTermInput.placeholder = 'Enter custom term';
+  newTermInput.addEventListener('focus', () => {
+    // Show the custom term modal when clicking this field
+    const modal = document.getElementById('custom-term-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.classList.remove('hidden');
+      document.getElementById('custom-term').focus();
+    }
+  });
+  
+  const newRemoveBtn = document.createElement('button');
+  newRemoveBtn.className = 'remove-term-btn';
+  newRemoveBtn.textContent = '×';
+  newRemoveBtn.style.visibility = 'hidden';
+  
+  newTermEntry.appendChild(newTermInput);
+  newTermEntry.appendChild(newRemoveBtn);
+  
+  termsList.appendChild(newTermEntry);
+}
+
+/**
+ * Remove a custom term
+ * @param {number} index - The index of the term to remove
+ */
+function removeCustomTerm(index) {
+  if (index < 0 || index >= appState.customTerms.length) return;
+  
+  // Remove from array
+  appState.customTerms.splice(index, 1);
+  
+  // Update UI
+  updateCustomTermsUI();
+  
+  // Show success message
+  updateUIStatus('success', 'Custom term removed');
+}
+
+/**
+ * Set up event listeners for new UI
+ */
+function setupPromptFocusedUI() {
+  // Protection level selection
+  const protectionLevels = document.querySelectorAll('input[name="protection-level"]');
+  protectionLevels.forEach(radio => {
+    radio.addEventListener('change', () => {
+      appState.protectionLevel = radio.value;
+    });
+  });
+  
+  // Quick redact button
+  const quickRedactBtn = document.getElementById('quick-redact-btn');
+  if (quickRedactBtn) {
+    quickRedactBtn.addEventListener('click', quickRedactText);
+  }
+  
+  // Redact with options button
+  const optionsRedactBtn = document.getElementById('process-paste-btn');
+  if (optionsRedactBtn) {
+    optionsRedactBtn.addEventListener('click', processRedactionText);
+  }
+  
+  // Apply redaction options
+  const applyOptionsBtn = document.getElementById('options-apply-btn');
+  if (applyOptionsBtn) {
+    applyOptionsBtn.addEventListener('click', applyRedactionWithOptions);
+  }
+  
+  // Cancel options
+  const cancelOptionsBtn = document.getElementById('options-cancel-btn');
+  if (cancelOptionsBtn) {
+    cancelOptionsBtn.addEventListener('click', () => {
+      const modal = document.getElementById('redact-options-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      }
+    });
+  }
+  
+  // Close options modal
+  const closeOptionsBtn = document.getElementById('redaction-options-close');
+  if (closeOptionsBtn) {
+    closeOptionsBtn.addEventListener('click', () => {
+      const modal = document.getElementById('redact-options-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      }
+    });
+  }
+  
+  // Custom term modal
+  const addTermBtn = document.getElementById('add-term-btn');
+  if (addTermBtn) {
+    addTermBtn.addEventListener('click', () => {
+      const modal = document.getElementById('custom-term-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        document.getElementById('custom-term').focus();
+      }
+    });
+  }
+  
+  // Add custom term
+  const addCustomTermBtn = document.getElementById('add-custom-term-btn');
+  if (addCustomTermBtn) {
+    addCustomTermBtn.addEventListener('click', addCustomTerm);
+  }
+  
+  // Close custom term modal
+  const closeCustomTermBtn = document.getElementById('custom-term-modal-close');
+  if (closeCustomTermBtn) {
+    closeCustomTermBtn.addEventListener('click', () => {
+      const modal = document.getElementById('custom-term-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      }
+    });
+  }
+  
+  // Copy redacted text
+  const copyRedactedBtn = document.getElementById('copy-redacted-btn');
+  if (copyRedactedBtn) {
+    copyRedactedBtn.addEventListener('click', copyRedactedTextToClipboard);
+  }
+  
+  // Send to AI
+  const sendToAIBtn = document.getElementById('send-to-ai-btn');
+  if (sendToAIBtn) {
+    sendToAIBtn.addEventListener('click', () => {
+      const destination = document.getElementById('destination-select').value;
+      sendToDestination(destination);
+    });
+  }
+  
+  // Close redaction details
+  const closeDetailsBtn = document.getElementById('close-details-btn');
+  if (closeDetailsBtn) {
+    closeDetailsBtn.addEventListener('click', () => {
+      const details = document.getElementById('redaction-details');
+      if (details) {
+        details.style.display = 'none';
+      }
+    });
+  }
+  
+  // Clear text button
+  const clearTextBtn = document.getElementById('clear-text-btn');
+  if (clearTextBtn) {
+    clearTextBtn.addEventListener('click', () => {
+      const pasteTextArea = document.getElementById('paste-text');
+      if (pasteTextArea) {
+        pasteTextArea.value = '';
+        pasteTextArea.focus();
+      }
+    });
+  }
+  
+  // Load example button
+  const exampleBtn = document.getElementById('example-btn');
+  if (exampleBtn) {
+    exampleBtn.addEventListener('click', loadExampleText);
+  }
+  
+  // Initialize UI elements
+  updateCustomTermsUI();
+}
+
+/**
+ * Load an example text for demonstration
+ */
+function loadExampleText() {
+  const pasteTextArea = document.getElementById('paste-text');
+  if (!pasteTextArea) return;
+  
+  const exampleText = `From: John Smith <john.smith@example.com>
+Phone: (555) 123-4567
+Address: 123 Main St, Anytown, CA 12345
+Date of Birth: 04/15/1980
+
+Dear Customer Support,
+
+I'm writing regarding my account #98765432 and my recent purchase with credit card 4111-2222-3333-4444 on January 15, 2025.
+
+I'm a 42 years old software engineer at TechCorp living in San Francisco, CA. I've been experiencing issues with my account that started on 12/20/2024.
+
+Please contact me as soon as possible to resolve this matter.
+
+Thanks,
+John
+SSN: 123-45-6789
+IP: 192.168.1.1`;
+
+  pasteTextArea.value = exampleText;
+  
+  // Show success message
+  updateUIStatus('success', 'Example text loaded');
+}
+
+/**
+ * Send redacted text to selected destination
+ * @param {string} destination - The destination option (clipboard, claude, etc.)
+ */
+function sendToDestination(destination) {
+  if (!appState.redactedText) {
+    updateUIStatus('error', 'No redacted text available');
+    return;
+  }
+  
+  switch (destination) {
+    case 'clipboard':
+      copyRedactedTextToClipboard();
+      break;
+    case 'claude':
+      updateUIStatus('info', 'Claude integration coming soon');
+      // Here you would add code to send to Claude
+      break;
+    case 'chatgpt':
+      updateUIStatus('info', 'ChatGPT integration coming soon');
+      // Here you would add code to send to ChatGPT
+      break;
+    case 'gemini':
+      updateUIStatus('info', 'Gemini integration coming soon');
+      // Here you would add code to send to Gemini
+      break;
+    default:
+      updateUIStatus('info', 'Copying to clipboard');
+      copyRedactedTextToClipboard();
+  }
+}
+
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   // First run diagnostics
@@ -1685,6 +2902,10 @@ document.addEventListener('DOMContentLoaded', () => {
   try {
     console.log('Starting application initialization...');
     initializeApp();
+    
+    // Setup event handlers for the prompt-focused UI
+    setupPromptFocusedUI();
+    
   } catch (error) {
     console.error('Failed to initialize application:', error);
     updateUIStatus('error', 'Failed to initialize the application. Check console for details.');

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Browser Redaction Tool</title>
+  <title>Prompt Privacy Tool</title>
   <link rel="stylesheet" href="css/styles.css">
   <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 </head>
@@ -11,208 +11,154 @@
   <div class="app-container">
     <header class="app-header">
       <div class="logo">
-        <img src="img/logo.svg" alt="Browser Redaction Tool" class="logo-image">
-        <h1>Browser Redaction Tool</h1>
+        <img src="img/logo.svg" alt="Prompt Privacy Tool" class="logo-image">
+        <h1>Prompt Privacy Tool</h1>
       </div>
       <div class="header-controls">
-        <button id="settings-btn" class="btn btn-icon" title="Settings">
-          <i class="icon-settings"></i>
-        </button>
         <button id="help-btn" class="btn btn-icon" title="Help">
           <i class="icon-help"></i>
         </button>
       </div>
     </header>
 
-    <main class="app-main">
-      <div class="sidebar">
-        <div class="sidebar-section">
-          <h2 class="sidebar-title">Workflow</h2>
-          <ul class="workflow-steps">
-            <li class="step active" data-step="upload">
-              <i class="icon-upload"></i>
-              <span>Upload</span>
-            </li>
-            <li class="step" data-step="rules">
-              <i class="icon-rules"></i>
-              <span>Redaction Rules</span>
-            </li>
-            <li class="step" data-step="preview">
-              <i class="icon-preview"></i>
-              <span>Preview</span>
-            </li>
-            <li class="step" data-step="export">
-              <i class="icon-export"></i>
-              <span>Export</span>
-            </li>
-          </ul>
-        </div>
-
-        <div class="sidebar-section">
-          <h2 class="sidebar-title">Redaction Rules</h2>
-          <div class="rule-list-container">
-            <ul class="rule-list" id="rule-list">
-              <!-- Rule items will be added here -->
-            </ul>
-            <div class="rule-actions">
-              <button id="add-rule-btn" class="btn btn-sm btn-outline">
-                <i class="icon-plus"></i> Add Rule
-              </button>
-              <button id="use-template-btn" class="btn btn-sm btn-outline">
-                <i class="icon-template"></i> Use Template
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <h2 class="sidebar-title">Recent Documents</h2>
-          <ul class="recent-docs" id="recent-docs">
-            <!-- Recent documents will be added here -->
-          </ul>
-        </div>
-      </div>
-
-      <div class="content">
-        <div class="step-container" id="upload-step">
-          <div class="step-header">
-            <h2>Upload Document</h2>
-            <p>Upload a document to begin the redaction process.</p>
+    <main class="app-main prompt-focused">
+      <div class="content centered-content">
+        <div class="main-container">
+          <div class="intro-section">
+            <h2>Protect your text before sending to AI</h2>
+            <p>Paste your text below to redact sensitive information before using it in AI prompts</p>
           </div>
           
-          <div class="upload-tabs">
-            <button class="upload-tab active" data-tab="single">Single Document</button>
-            <button class="upload-tab" data-tab="batch">Batch Upload</button>
-            <button class="upload-tab" data-tab="paste">Paste Text</button>
-          </div>
-          
-          <div class="upload-tab-content active" id="single-upload-tab">
-            <div class="upload-container" id="document-uploader"></div>
-          </div>
-          
-          <div class="upload-tab-content" id="batch-upload-tab">
-            <div class="batch-upload-container" id="batch-uploader-container"></div>
-          </div>
-          
-          <div class="upload-tab-content" id="paste-upload-tab">
-            <div class="paste-container">
-              <div class="form-group">
-                <label for="paste-text">Paste Text for Redaction</label>
-                <textarea id="paste-text" class="form-control" rows="10" placeholder="Paste text containing sensitive information that you want to redact for use in LLM prompts..."></textarea>
-              </div>
-              <div class="form-group">
-                <button id="process-paste-btn" class="btn btn-primary">Process Text</button>
-              </div>
-              <div class="redacted-output" id="redacted-output-container" style="display: none;">
-                <h3>Redacted Output</h3>
-                <div class="form-group">
-                  <label for="redacted-text">Redacted Text (For LLM Prompts)</label>
-                  <textarea id="redacted-text" class="form-control" rows="10" readonly></textarea>
-                </div>
-                <div class="form-actions">
-                  <button id="copy-redacted-btn" class="btn btn-outline">Copy to Clipboard</button>
-                  <button id="save-redacted-btn" class="btn btn-outline">Save as Document</button>
+          <div class="input-output-container">
+            <div class="text-input-section">
+              <div class="section-header">
+                <h3>Your Text</h3>
+                <div class="section-actions">
+                  <button id="clear-text-btn" class="btn btn-sm btn-outline">Clear</button>
+                  <button id="example-btn" class="btn btn-sm btn-outline">Load Example</button>
                 </div>
               </div>
+              <div class="textarea-container">
+                <textarea id="paste-text" class="form-control text-area" placeholder="Paste text containing sensitive information you want to redact before sending to AI tools..."></textarea>
+              </div>
+              <div class="protection-options">
+                <div class="protection-levels">
+                  <h4>Protection Level</h4>
+                  <div class="protection-level-selector">
+                    <label class="level-option">
+                      <input type="radio" name="protection-level" value="standard" checked>
+                      <span>Standard</span>
+                      <div class="level-tooltip">Redacts common PII like names, emails, phone numbers, addresses</div>
+                    </label>
+                    <label class="level-option">
+                      <input type="radio" name="protection-level" value="high">
+                      <span>High</span>
+                      <div class="level-tooltip">Adds redaction for financial info, dates, organization names</div>
+                    </label>
+                    <label class="level-option">
+                      <input type="radio" name="protection-level" value="maximum">
+                      <span>Maximum</span>
+                      <div class="level-tooltip">Redacts all sensitive data including potential identifiers and locations</div>
+                    </label>
+                  </div>
+                </div>
+                <div class="custom-terms-section">
+                  <div class="custom-terms-header">
+                    <h4>Custom Terms to Redact</h4>
+                    <button id="add-term-btn" class="btn btn-sm btn-outline">Add Term</button>
+                  </div>
+                  <div class="custom-terms-list" id="custom-terms-list">
+                    <div class="custom-term-entry">
+                      <input type="text" class="form-control custom-term-input" placeholder="Enter custom term">
+                      <button class="remove-term-btn">×</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="process-actions">
+                <button id="quick-redact-btn" class="btn btn-success">Quick Redact</button>
+                <button id="process-paste-btn" class="btn btn-primary">Redact with Options</button>
+              </div>
+            </div>
+
+            <div class="text-output-section">
+              <div class="section-header">
+                <h3>Redacted Text</h3>
+                <div class="section-actions">
+                  <button id="copy-redacted-btn" class="btn btn-sm btn-outline">Copy to Clipboard</button>
+                </div>
+              </div>
+              <div class="textarea-container">
+                <textarea id="redacted-text" class="form-control text-area" placeholder="Your redacted text will appear here..." readonly></textarea>
+              </div>
+              <div class="redaction-summary" id="redaction-summary">
+                <div class="summary-title">Redaction Summary</div>
+                <div class="summary-stats">
+                  <div class="stat-item">
+                    <span class="stat-value" id="total-redactions">0</span>
+                    <span class="stat-label">Redactions</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-value" id="protected-categories">0</span>
+                    <span class="stat-label">Categories</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-value" id="protection-score">0%</span>
+                    <span class="stat-label">Protected</span>
+                  </div>
+                </div>
+              </div>
+              <div class="redaction-actions">
+                <div class="destination-options">
+                  <label for="destination-select">Send To:</label>
+                  <select id="destination-select" class="form-control">
+                    <option value="clipboard">Clipboard</option>
+                    <option value="claude">Claude</option>
+                    <option value="chatgpt">ChatGPT</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </div>
+                <button id="send-to-ai-btn" class="btn btn-primary">Send to AI</button>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="step-container" id="rules-step" hidden>
-          <div class="step-header">
-            <h2>Manage Redaction Rules</h2>
-            <p>Create and customize rules to identify sensitive information.</p>
-          </div>
-          <div class="rules-container" id="rule-editor"></div>
-        </div>
-
-        <div class="step-container" id="preview-step" hidden>
-          <div class="step-header">
-            <h2>Preview Redactions</h2>
-            <p>Review and confirm redactions before exporting.</p>
-          </div>
           
-          <div class="preview-tabs">
-            <button class="preview-tab active" data-tab="document-preview">Document Preview</button>
-            <button class="preview-tab" data-tab="analysis">Analysis</button>
-            <button class="preview-tab" data-tab="redaction-dashboard">Dashboard</button>
-            <button class="preview-tab" data-tab="image-editor">Image Editor</button>
-            <button class="preview-tab" data-tab="rule-tester">Rule Tester</button>
-          </div>
-          
-          <div class="preview-tab-content active" id="document-preview-tab">
-            <div class="preview-container" id="document-preview"></div>
-            <div class="preview-actions">
-              <button id="prev-page-btn" class="btn btn-icon" disabled title="Previous Page">
-                <i class="icon-prev"></i>
-              </button>
-              <span id="page-indicator">Page 1 of 1</span>
-              <button id="next-page-btn" class="btn btn-icon" disabled title="Next Page">
-                <i class="icon-next"></i>
-              </button>
-              <button id="redact-btn" class="btn btn-primary">
-                Apply Redactions
-              </button>
+          <div class="redaction-details" id="redaction-details">
+            <div class="details-header">
+              <h3>Redaction Details</h3>
+              <button id="close-details-btn" class="btn-close">×</button>
             </div>
-          </div>
-          
-          <div class="preview-tab-content" id="analysis-tab">
-            <div id="redaction-analyzer"></div>
-          </div>
-          
-          <div class="preview-tab-content" id="redaction-dashboard-tab">
-            <div id="redaction-dashboard"></div>
-          </div>
-          
-          <div class="preview-tab-content" id="image-editor-tab">
-            <div id="image-redaction-editor"></div>
-          </div>
-          
-          <div class="preview-tab-content" id="rule-tester-tab">
-            <div id="redaction-rule-tester"></div>
-          </div>
-        </div>
-
-        <div class="step-container" id="export-step" hidden>
-          <div class="step-header">
-            <h2>Export Document</h2>
-            <p>Export your redacted document.</p>
-          </div>
-          <div class="export-container" id="export-options">
-            <div class="export-options">
-              <div class="form-group">
-                <label for="export-format">Export Format</label>
-                <select id="export-format" class="form-control">
-                  <option value="pdf">PDF</option>
-                  <option value="text">Text</option>
-                  <option value="json">JSON</option>
-                  <option value="image">Image</option>
+            <div class="redactions-list-container">
+              <div class="redactions-filters">
+                <select id="redaction-filter" class="form-control">
+                  <option value="all">All Redactions</option>
+                  <option value="personal">Personal Info</option>
+                  <option value="financial">Financial Info</option>
+                  <option value="contact">Contact Details</option>
+                  <option value="custom">Custom Terms</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label for="export-filename">Filename</label>
-                <input type="text" id="export-filename" class="form-control" placeholder="document_redacted.pdf">
-              </div>
-              <div class="form-group checkbox">
-                <input type="checkbox" id="include-audit" checked>
-                <label for="include-audit">Include Audit Information</label>
-              </div>
-              <div class="form-group checkbox">
-                <input type="checkbox" id="add-watermark" checked>
-                <label for="add-watermark">Add Watermark</label>
-              </div>
-              <div class="export-actions">
-                <button id="export-btn" class="btn btn-primary">
-                  Export Document
-                </button>
-              </div>
-            </div>
-            <div class="export-preview" id="export-preview">
-              <h3>Export Preview</h3>
-              <div class="preview-placeholder">
-                <i class="icon-document"></i>
-                <p>Preview will appear here</p>
-              </div>
+              <ul class="redactions-list" id="redactions-list">
+                <!-- Redactions will be listed here -->
+                <li class="redaction-item">
+                  <div class="redaction-item-info">
+                    <span class="redaction-type">Email</span>
+                    <span class="redaction-text">john.doe@example.com</span>
+                  </div>
+                  <div class="redaction-item-actions">
+                    <button class="restore-btn" title="Restore">Restore</button>
+                  </div>
+                </li>
+                <li class="redaction-item">
+                  <div class="redaction-item-info">
+                    <span class="redaction-type">Phone</span>
+                    <span class="redaction-text">555-123-4567</span>
+                  </div>
+                  <div class="redaction-item-actions">
+                    <button class="restore-btn" title="Restore">Restore</button>
+                  </div>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
@@ -225,106 +171,164 @@
           <i class="icon-loading"></i>
           <span>Initializing...</span>
         </div>
-        <div id="memory-usage" class="status-item">
-          <i class="icon-memory"></i>
-          <span>Memory: 0 MB</span>
-        </div>
       </div>
       <div class="footer-info">
-        <p>Browser Redaction Tool - All processing happens in your browser</p>
+        <p>Prompt Privacy Tool - All processing happens in your browser</p>
       </div>
     </footer>
   </div>
 
-  <!-- Modal templates -->
-  <div class="modal hidden" id="rule-modal" style="display: none;" hidden>
+  <!-- Modal for custom term -->
+  <div class="modal hidden" id="custom-term-modal" style="display: none;" hidden>
     <div class="modal-content">
       <div class="modal-header">
-        <h3 id="rule-modal-title">Add Redaction Rule</h3>
-        <button class="btn-close" id="rule-modal-close">×</button>
+        <h3>Add Custom Term</h3>
+        <button class="btn-close" id="custom-term-modal-close">×</button>
       </div>
       <div class="modal-body">
-        <form id="rule-form">
-          <div class="form-group">
-            <label for="rule-name">Rule Name</label>
-            <input type="text" id="rule-name" class="form-control" placeholder="e.g., Email Addresses" required>
-          </div>
-          
-          <div class="form-group">
-            <label>Match Type</label>
-            <div class="radio-group">
-              <div class="radio-option">
-                <input type="radio" id="match-pattern" name="match-type" value="pattern" checked>
-                <label for="match-pattern">Simple Pattern</label>
-              </div>
-              <div class="radio-option">
-                <input type="radio" id="match-regex" name="match-type" value="regex">
-                <label for="match-regex">Regular Expression</label>
-              </div>
-            </div>
-          </div>
-          
-          <div class="form-group" id="pattern-group">
-            <label for="rule-pattern">Pattern to Match</label>
-            <input type="text" id="rule-pattern" class="form-control" placeholder="e.g., confidential">
-          </div>
-          
-          <div class="form-group" id="regex-group" hidden>
-            <label for="rule-regex">Regular Expression</label>
-            <input type="text" id="rule-regex" class="form-control" placeholder="e.g., \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b">
-            <div class="help-text">For matching complex patterns like email addresses, phone numbers, etc.</div>
-          </div>
-          
-          <div class="form-group">
-            <label for="replacement-type">Replacement Type</label>
-            <select id="replacement-type" class="form-control">
-              <option value="fixed">Fixed Text</option>
-              <option value="character">Character Replacement</option>
-              <option value="format-preserving">Format-Preserving</option>
-            </select>
-          </div>
-          
-          <div class="form-group" id="replacement-text-group">
-            <label for="replacement-text">Replacement Text</label>
-            <input type="text" id="replacement-text" class="form-control" value="[REDACTED]">
-          </div>
-          
-          <div class="form-group" id="replacement-char-group" hidden>
-            <label for="replacement-char">Replacement Character</label>
-            <input type="text" id="replacement-char" class="form-control" value="X" maxlength="1">
-          </div>
-          
-          <div class="form-group">
-            <label for="rule-description">Description (Optional)</label>
-            <textarea id="rule-description" class="form-control" placeholder="Add notes about this rule"></textarea>
-          </div>
-
-          <div class="form-actions">
-            <button type="button" id="rule-test-btn" class="btn btn-outline">Test Rule</button>
-            <button type="submit" id="rule-save-btn" class="btn btn-primary">Save Rule</button>
-          </div>
-        </form>
+        <div class="form-group">
+          <label for="custom-term">Term to Redact</label>
+          <input type="text" id="custom-term" class="form-control" placeholder="Enter text to redact">
+          <div class="help-text">This text will be replaced with [REDACTED] whenever it appears</div>
+        </div>
+        <div class="form-group">
+          <label for="custom-replacement">Replacement Text (Optional)</label>
+          <input type="text" id="custom-replacement" class="form-control" placeholder="e.g., [COMPANY]">
+          <div class="help-text">Custom label for this redacted content</div>
+        </div>
+        <div class="form-actions">
+          <button id="add-custom-term-btn" class="btn btn-primary">Add Term</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="modal hidden" id="rule-template-modal" style="display: none;" hidden>
+  <!-- Custom redaction style modal -->
+  <div class="modal hidden" id="redact-options-modal" style="display: none;" hidden>
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Select Rule Template</h3>
-        <button class="btn-close" id="template-modal-close">×</button>
+        <h3>Redaction Options</h3>
+        <button class="btn-close" id="redaction-options-close">×</button>
       </div>
       <div class="modal-body">
-        <div class="template-list">
-          <!-- Templates will be added here -->
+        <div class="form-group">
+          <label for="redaction-style">Redaction Style</label>
+          <select id="redaction-style" class="form-control">
+            <option value="type-label">Type Labels ([EMAIL], [PHONE])</option>
+            <option value="generic">Generic Label ([REDACTED])</option>
+            <option value="black-box">Black Box (█████████)</option>
+            <option value="character">Character Replacement (XXXXX)</option>
+          </select>
+        </div>
+        
+        <div class="protection-categories">
+          <h4>Information to Protect</h4>
+          
+          <div class="category-section">
+            <div class="category-header">
+              <input type="checkbox" id="personal-info" checked>
+              <label for="personal-info">Personal Information</label>
+            </div>
+            <div class="category-items">
+              <div class="category-item">
+                <input type="checkbox" id="names" checked>
+                <label for="names">Names</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="dates" checked>
+                <label for="dates">Dates</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="ids" checked>
+                <label for="ids">ID Numbers</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="gender" checked>
+                <label for="gender">Gender/Age</label>
+              </div>
+            </div>
+          </div>
+          
+          <div class="category-section">
+            <div class="category-header">
+              <input type="checkbox" id="contact-info" checked>
+              <label for="contact-info">Contact Information</label>
+            </div>
+            <div class="category-items">
+              <div class="category-item">
+                <input type="checkbox" id="emails" checked>
+                <label for="emails">Email Addresses</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="phones" checked>
+                <label for="phones">Phone Numbers</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="addresses" checked>
+                <label for="addresses">Physical Addresses</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="usernames" checked>
+                <label for="usernames">Usernames/Handles</label>
+              </div>
+            </div>
+          </div>
+          
+          <div class="category-section">
+            <div class="category-header">
+              <input type="checkbox" id="financial-info" checked>
+              <label for="financial-info">Financial Information</label>
+            </div>
+            <div class="category-items">
+              <div class="category-item">
+                <input type="checkbox" id="credit-card" checked>
+                <label for="credit-card">Credit Card Numbers</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="bank-accounts" checked>
+                <label for="bank-accounts">Bank Accounts</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="monetary" checked>
+                <label for="monetary">Monetary Values</label>
+              </div>
+            </div>
+          </div>
+          
+          <div class="category-section">
+            <div class="category-header">
+              <input type="checkbox" id="location-info" checked>
+              <label for="location-info">Location Information</label>
+            </div>
+            <div class="category-items">
+              <div class="category-item">
+                <input type="checkbox" id="locations" checked>
+                <label for="locations">Locations/Places</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="ip-addresses" checked>
+                <label for="ip-addresses">IP Addresses</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="coordinates" checked>
+                <label for="coordinates">GPS Coordinates</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-actions">
+          <button id="options-cancel-btn" class="btn btn-outline">Cancel</button>
+          <button id="options-apply-btn" class="btn btn-primary">Apply & Redact</button>
         </div>
       </div>
     </div>
   </div>
   
   <!-- Scripts -->
-  <script type="module" src="../src/app.js"></script>
-  <!-- Include a status message container -->
+  <script type="module" src="js/app.js"></script>
+  
+  <!-- Status message container -->
   <div id="status-message" class="status-message"></div>
 </body>
 </html>

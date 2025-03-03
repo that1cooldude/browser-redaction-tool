@@ -11,6 +11,7 @@ import { initRedactionAnalyzer } from './redaction-analyzer.js';
 import { initRedactionDashboard } from './redaction-dashboard.js';
 import { initImageRedactionEditor } from './image-redaction-editor.js';
 import { initRedactionRuleTester } from './redaction-rule-tester.js';
+import { initRedactionRuleSelector } from './redaction-rule-selector.js';
 
 export {
   initDocumentUploader,
@@ -19,5 +20,6 @@ export {
   initRedactionAnalyzer,
   initRedactionDashboard,
   initImageRedactionEditor,
-  initRedactionRuleTester
+  initRedactionRuleTester,
+  initRedactionRuleSelector
 };
