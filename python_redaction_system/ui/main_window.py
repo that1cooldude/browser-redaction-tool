@@ -2,13 +2,15 @@
 Main window for the PyQt6-based redaction system UI.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any
+import time
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox,
-    QCheckBox, QTabWidget, QFileDialog, QMessageBox
+    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar
 )
 
 from python_redaction_system.core.redaction_engine import RedactionEngine
@@ -35,6 +37,17 @@ class MainWindow(QMainWindow):
         # Initialize components
         self.redaction_engine = redaction_engine or RedactionEngine()
         self.settings_manager = settings_manager or SettingsManager()
+        
+        # Throttling for real-time preview
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.timeout.connect(self._update_preview)
+        self.preview_delay = 500  # ms
+        self.last_preview_time = 0
+        self.preview_throttle_threshold = 200  # ms
+        
+        # Statistics for redactions
+        self.redaction_stats = {}
         
         # Set up UI
         self.setWindowTitle("Text Redaction System")
@@ -81,12 +94,22 @@ class MainWindow(QMainWindow):
         """
         layout = QVBoxLayout(tab_widget)
         
+        # Main splitter for split view
+        self.main_splitter = QSplitter(Qt.Orientation.Vertical)
+        layout.addWidget(self.main_splitter)
+        
+        # Top part - input and controls
+        top_widget = QWidget()
+        top_layout = QVBoxLayout(top_widget)
+        
         # Input section
         input_group = QGroupBox("Input Text")
         input_layout = QVBoxLayout(input_group)
         
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Enter or paste text to redact...")
+        # Connect text changed event for real-time preview
+        self.text_input.textChanged.connect(self._schedule_preview)
         input_layout.addWidget(self.text_input)
         
         # Button row
@@ -97,11 +120,22 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.load_file_button)
         
         self.clear_input_button = QPushButton("Clear Input")
-        self.clear_input_button.clicked.connect(lambda: self.text_input.clear())
+        self.clear_input_button.clicked.connect(self._clear_input)
         button_layout.addWidget(self.clear_input_button)
         
+        # Real-time preview toggle
+        self.realtime_preview_checkbox = QCheckBox("Real-time Preview")
+        self.realtime_preview_checkbox.setChecked(True)
+        button_layout.addWidget(self.realtime_preview_checkbox)
+        
+        # Split view toggle
+        self.split_view_checkbox = QCheckBox("Split View")
+        self.split_view_checkbox.setChecked(False)
+        self.split_view_checkbox.stateChanged.connect(self._toggle_split_view)
+        button_layout.addWidget(self.split_view_checkbox)
+        
         input_layout.addLayout(button_layout)
-        layout.addWidget(input_group)
+        top_layout.addWidget(input_group)
         
         # Control section
         control_group = QGroupBox("Redaction Controls")
@@ -114,7 +148,7 @@ class MainWindow(QMainWindow):
         self.sensitivity_combo.addItems(["Low", "Medium", "High"])
         self.sensitivity_combo.setCurrentText("Medium")
         self.sensitivity_combo.currentTextChanged.connect(
-            lambda text: self.redaction_engine.set_sensitivity(text.lower())
+            lambda text: self._handle_sensitivity_change(text.lower())
         )
         sensitivity_layout.addWidget(self.sensitivity_combo)
         control_layout.addLayout(sensitivity_layout)
@@ -130,6 +164,8 @@ class MainWindow(QMainWindow):
         for category in self.redaction_engine.rule_manager.get_all_categories():
             checkbox = QCheckBox(category)
             checkbox.setChecked(True)
+            # Connect each checkbox to update preview when toggled
+            checkbox.stateChanged.connect(self._schedule_preview)
             checkbox_layout.addWidget(checkbox)
             self.category_checkboxes[category] = checkbox
         
@@ -143,9 +179,34 @@ class MainWindow(QMainWindow):
         self.redact_button.setMinimumHeight(50)
         self.redact_button.clicked.connect(self._redact_text)
         redact_layout.addWidget(self.redact_button)
+        
+        # Add option to use NLP
+        self.use_nlp_checkbox = QCheckBox("Use NLP Detection")
+        self.use_nlp_checkbox.setChecked(True)
+        self.use_nlp_checkbox.stateChanged.connect(self._schedule_preview)
+        redact_layout.addWidget(self.use_nlp_checkbox)
+        
         control_layout.addLayout(redact_layout)
         
-        layout.addWidget(control_group)
+        top_layout.addWidget(control_group)
+        
+        # Statistics section (initially hidden, will be shown after redaction)
+        self.stats_group = QGroupBox("Redaction Statistics")
+        stats_layout = QVBoxLayout(self.stats_group)
+        
+        self.stats_label = QLabel("No redactions performed yet.")
+        stats_layout.addWidget(self.stats_label)
+        
+        # Progress bar for each category
+        self.stats_progress_bars = {}
+        self.stats_count_labels = {}
+        self.stats_category_layout = QVBoxLayout()
+        stats_layout.addLayout(self.stats_category_layout)
+        
+        top_layout.addWidget(self.stats_group)
+        
+        # Bottom part - split view for output
+        self.output_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Output section
         output_group = QGroupBox("Redacted Output")
@@ -169,8 +230,36 @@ class MainWindow(QMainWindow):
         self.save_output_button.clicked.connect(self._save_to_file)
         output_button_layout.addWidget(self.save_output_button)
         
+        # Highlight option for output
+        self.highlight_checkbox = QCheckBox("Highlight Redactions")
+        self.highlight_checkbox.setChecked(True)
+        self.highlight_checkbox.stateChanged.connect(self._schedule_preview)
+        output_button_layout.addWidget(self.highlight_checkbox)
+        
         output_layout.addLayout(output_button_layout)
-        layout.addWidget(output_group)
+        
+        # Original text view for split mode (initially not added to layout)
+        self.original_view_group = QGroupBox("Original Text")
+        original_view_layout = QVBoxLayout(self.original_view_group)
+        
+        self.original_view = QTextEdit()
+        self.original_view.setReadOnly(True)
+        self.original_view.setPlaceholderText("Original text will appear here in split view mode...")
+        original_view_layout.addWidget(self.original_view)
+        
+        # Add widgets to the output splitter
+        self.output_splitter.addWidget(output_group)
+        # Original view is not added initially
+        
+        # Add widgets to main splitter
+        self.main_splitter.addWidget(top_widget)
+        self.main_splitter.addWidget(self.output_splitter)
+        
+        # Set initial splitter sizes
+        self.main_splitter.setSizes([500, 500])
+        
+        # Initially hide the stats group
+        self.stats_group.setVisible(False)
     
     def _create_rule_management_tab(self, tab_widget: QWidget) -> None:
         """
@@ -694,6 +783,226 @@ class MainWindow(QMainWindow):
         # Would load settings from the settings manager
         pass
     
+    def _schedule_preview(self) -> None:
+        """Schedule a preview update with throttling."""
+        if not self.realtime_preview_checkbox.isChecked():
+            return
+            
+        current_time = time.time() * 1000  # Convert to ms
+        time_since_last = current_time - self.last_preview_time
+        
+        # Cancel any pending timer
+        if self.preview_timer.isActive():
+            self.preview_timer.stop()
+        
+        # If typing is fast, use a longer delay to avoid too frequent updates
+        if time_since_last < self.preview_throttle_threshold:
+            delay = self.preview_delay
+        else:
+            delay = 100  # Shorter delay if typing is slow
+            
+        # Start the timer
+        self.preview_timer.start(delay)
+        self.last_preview_time = current_time
+    
+    def _update_preview(self) -> None:
+        """Update the preview with current redaction settings."""
+        input_text = self.text_input.toPlainText()
+        if not input_text:
+            self.text_output.clear()
+            if self.split_view_checkbox.isChecked():
+                self.original_view.clear()
+            self.stats_group.setVisible(False)
+            return
+        
+        # Get selected categories
+        selected_categories = [
+            category for category, checkbox in self.category_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+        
+        if not selected_categories:
+            self.text_output.setPlainText("No categories selected for redaction.")
+            return
+        
+        # Perform redaction
+        try:
+            # Update the original view if split mode is enabled
+            if self.split_view_checkbox.isChecked():
+                self.original_view.setPlainText(input_text)
+            
+            # Check if NLP should be used
+            use_nlp = self.use_nlp_checkbox.isChecked()
+            
+            # Perform the redaction
+            redacted_text, stats = self.redaction_engine.redact_text(
+                input_text, selected_categories, use_nlp=use_nlp
+            )
+            
+            # Store stats for displaying
+            self.redaction_stats = stats
+            
+            # Apply highlighting if enabled
+            if self.highlight_checkbox.isChecked():
+                # Use HTML with colored redaction markers
+                colored_text = redacted_text
+                
+                # Define colors for different categories
+                category_colors = {
+                    "PII": "#ff5555",       # Red
+                    "PHI": "#5555ff",       # Blue
+                    "FINANCIAL": "#55aa55", # Green
+                    "CREDENTIALS": "#aa55aa", # Purple
+                    "LOCATIONS": "#aaaa55"  # Yellow
+                }
+                
+                # Replace redaction markers with colored spans
+                for category in selected_categories:
+                    color = category_colors.get(category, "#aaaaaa")  # Default to gray
+                    # Pattern to match category markers like [PII:SSN]
+                    pattern = f'\\[{category}:[^\\]]+\\]'
+                    
+                    # Replace with colored versions
+                    colored_matches = []
+                    for match in re.finditer(pattern, colored_text):
+                        marker = match.group(0)
+                        # Replace with HTML
+                        colored_match = f'<span style="background-color: {color}; color: white;">{marker}</span>'
+                        colored_matches.append((marker, colored_match))
+                    
+                    # Apply replacements from longest to shortest to avoid issues
+                    colored_matches.sort(key=lambda x: len(x[0]), reverse=True)
+                    for original, colored in colored_matches:
+                        colored_text = colored_text.replace(original, colored)
+                
+                # Display with HTML formatting
+                self.text_output.setHtml(colored_text)
+            else:
+                # Just use plain text
+                self.text_output.setPlainText(redacted_text)
+            
+            # Update statistics display
+            self._update_statistics(stats)
+            
+        except Exception as e:
+            self.text_output.setPlainText(f"Error during preview: {str(e)}")
+    
+    def _update_statistics(self, stats: Dict[str, int]) -> None:
+        """Update the statistics display with redaction counts."""
+        if not stats:
+            self.stats_group.setVisible(False)
+            return
+            
+        # Show the stats group
+        self.stats_group.setVisible(True)
+        
+        # Calculate total redactions
+        total_redactions = sum(stats.values())
+        
+        if total_redactions == 0:
+            self.stats_label.setText("No redactions performed.")
+            for widget in self.stats_progress_bars.values():
+                widget.setVisible(False)
+            for widget in self.stats_count_labels.values():
+                widget.setVisible(False)
+            return
+            
+        # Update the summary label
+        self.stats_label.setText(f"Total redactions: {total_redactions}")
+        
+        # Clear existing progress bars if categories changed
+        if set(stats.keys()) != set(self.stats_progress_bars.keys()):
+            # Clear existing widgets
+            for i in reversed(range(self.stats_category_layout.count())): 
+                self.stats_category_layout.itemAt(i).widget().setParent(None)
+            
+            # Reset dictionaries
+            self.stats_progress_bars = {}
+            self.stats_count_labels = {}
+            
+            # Create new widgets for each category
+            for category in stats.keys():
+                category_layout = QHBoxLayout()
+                
+                # Category label
+                label = QLabel(f"{category}:")
+                label.setMinimumWidth(100)
+                category_layout.addWidget(label)
+                
+                # Progress bar
+                progress_bar = QProgressBar()
+                progress_bar.setTextVisible(False)
+                category_layout.addWidget(progress_bar)
+                self.stats_progress_bars[category] = progress_bar
+                
+                # Count label
+                count_label = QLabel("0")
+                count_label.setMinimumWidth(50)
+                category_layout.addWidget(count_label)
+                self.stats_count_labels[category] = count_label
+                
+                self.stats_category_layout.addLayout(category_layout)
+        
+        # Update progress bars
+        max_count = max(stats.values()) if stats else 0
+        for category, count in stats.items():
+            if category in self.stats_progress_bars:
+                progress_bar = self.stats_progress_bars[category]
+                if max_count > 0:
+                    progress_bar.setMaximum(max_count)
+                    progress_bar.setValue(count)
+                else:
+                    progress_bar.setMaximum(1)
+                    progress_bar.setValue(0)
+                
+                # Set color based on category
+                palette = QPalette()
+                color = {
+                    "PII": QColor(255, 85, 85),       # Red
+                    "PHI": QColor(85, 85, 255),       # Blue
+                    "FINANCIAL": QColor(85, 170, 85), # Green
+                    "CREDENTIALS": QColor(170, 85, 170), # Purple
+                    "LOCATIONS": QColor(170, 170, 85)  # Yellow
+                }.get(category, QColor(170, 170, 170))  # Default to gray
+                
+                palette.setColor(QPalette.ColorRole.Highlight, color)
+                progress_bar.setPalette(palette)
+                
+            if category in self.stats_count_labels:
+                count_label = self.stats_count_labels[category]
+                count_label.setText(str(count))
+    
+    def _handle_sensitivity_change(self, level: str) -> None:
+        """Handle sensitivity level changes."""
+        # Set the engine sensitivity level
+        self.redaction_engine.set_sensitivity(level)
+        
+        # Update the preview
+        self._schedule_preview()
+    
+    def _toggle_split_view(self, state: int) -> None:
+        """Toggle between normal and split view modes."""
+        if state == Qt.CheckState.Checked.value:
+            # Add original view to splitter if not already there
+            if self.output_splitter.count() == 1:
+                self.output_splitter.addWidget(self.original_view_group)
+                self.output_splitter.setSizes([400, 400])
+            
+            # Update original text view with current input
+            self.original_view.setPlainText(self.text_input.toPlainText())
+        else:
+            # Remove original view from splitter
+            if self.output_splitter.count() > 1:
+                self.original_view_group.setParent(None)
+    
+    def _clear_input(self) -> None:
+        """Clear input text and reset preview."""
+        self.text_input.clear()
+        self.text_output.clear()
+        if self.split_view_checkbox.isChecked():
+            self.original_view.clear()
+        self.stats_group.setVisible(False)
+    
     def _redact_text(self) -> None:
         """Redact the input text and display the result."""
         input_text = self.text_input.toPlainText()
@@ -713,8 +1022,27 @@ class MainWindow(QMainWindow):
         
         # Perform redaction
         try:
-            redacted_text, stats = self.redaction_engine.redact_text(input_text, selected_categories)
-            self.text_output.setPlainText(redacted_text)
+            # Show original text in split view if enabled
+            if self.split_view_checkbox.isChecked():
+                self.original_view.setPlainText(input_text)
+            
+            # Check if NLP should be used
+            use_nlp = self.use_nlp_checkbox.isChecked()
+            
+            redacted_text, stats = self.redaction_engine.redact_text(
+                input_text, selected_categories, use_nlp=use_nlp
+            )
+            
+            # Apply highlighting if enabled
+            if self.highlight_checkbox.isChecked():
+                # Use the preview function for highlighting
+                self._update_preview()
+            else:
+                # Just use plain text
+                self.text_output.setPlainText(redacted_text)
+            
+            # Update statistics
+            self._update_statistics(stats)
             
             # Show stats in status bar
             total_redactions = sum(stats.values())

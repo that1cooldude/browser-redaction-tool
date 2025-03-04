@@ -1,0 +1,65 @@
+SAMPLE PII DATA FOR TESTING THE REDACTION SYSTEM
+===============================================
+
+PERSONAL IDENTIFIABLE INFORMATION (PII):
+---------------------------------------
+Name: John Michael Smith
+Date of Birth: 04/15/1985
+SSN: 123-45-6789
+Email Address: john.smith@example.com
+Phone Number: (555) 123-4567
+Driver's License: D1234567
+Passport Number: P12345678
+
+HOME ADDRESS:
+-----------
+123 Main Street
+Apartment 4B
+New York, NY 10001
+United States
+
+FINANCIAL INFORMATION:
+--------------------
+Credit Card: 4111 1111 1111 1111
+Expiration Date: 12/25
+CVV: 123
+Bank Account: 987654321
+Routing Number: 021000021
+Bitcoin Wallet: 3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy
+
+HEALTHCARE INFORMATION (PHI):
+---------------------------
+Patient ID: PAT-12345678
+Insurance Policy: INS-9876543
+Medical Record Number: MRN-1234567890
+Diagnosis: Type 2 Diabetes (E11.9)
+Medication: Metformin 500mg twice daily
+
+WORKPLACE INFORMATION:
+--------------------
+Employer: Acme Technologies, Inc.
+Employee ID: EMP-98765
+Work Email: jsmith@acmetech.com
+Supervisor: Sarah Johnson
+Salary: $85,000 annually
+
+CREDENTIALS:
+----------
+Username: jsmith2023
+Password: P@ssw0rd123!
+API Key: sk_test_4eC39HqLyjWDarjtT1zdp7dc
+
+MIXED CONTEXT EXAMPLE:
+-------------------
+Hi Sarah,
+
+I'm writing to confirm our meeting tomorrow at 2:30 PM at the office. I've attached the report you requested with the financial projections for Q3. 
+
+By the way, I need to update my direct deposit information. My new account number is 123456789 at Chase Bank (routing: 021000021). Also, could you forward the health insurance forms to me at john.smith@example.com? My policy number is HI-12345678.
+
+I'll be out of the office next week as I'm traveling to 123 Main Street, Boston MA 02108 to visit my parents. You can reach me on my cell at (555) 123-4567 if anything urgent comes up.
+
+Thanks,
+John
+
+P.S. The new office Wi-Fi password is Acm3T3ch2023!

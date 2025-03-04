@@ -22,10 +22,12 @@ cd python-redaction-system
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install core dependencies
+pip install PyQt6==6.5.3 regex==2023.10.3 cryptography==41.0.5 pyyaml==6.0.1 pyinstaller==6.12.0
 
-# Download spaCy model
+# Optional: Install spaCy for enhanced NLP-based entity detection
+# Note: The application works without spaCy, but NLP features will be disabled
+pip install spacy
 python -m spacy download en_core_web_sm
 ```
 
@@ -68,6 +70,11 @@ python_redaction_system/
 - All sensitive data is encrypted using AES-256
 - Follows NIST guidelines for data protection
 - Implements secure data disposal practices
+
+## Optional Components
+
+- **spaCy NLP**: Enhances entity recognition but application functions without it
+- **SQLite3**: Built into Python's standard library, no separate installation needed
 
 ## License
 
