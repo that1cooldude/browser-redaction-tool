@@ -3,9 +3,9 @@ Main window for the PyQt6-based redaction system UI.
 """
 
 from typing import Dict, List, Optional, Tuple, Any
-import time
+import re
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -38,13 +38,7 @@ class MainWindow(QMainWindow):
         self.redaction_engine = redaction_engine or RedactionEngine()
         self.settings_manager = settings_manager or SettingsManager()
         
-        # Throttling for real-time preview
-        self.preview_timer = QTimer(self)
-        self.preview_timer.setSingleShot(True)
-        self.preview_timer.timeout.connect(self._update_preview)
-        self.preview_delay = 500  # ms
-        self.last_preview_time = 0
-        self.preview_throttle_threshold = 200  # ms
+        # Remove preview timer initialization
         
         # Statistics for redactions
         self.redaction_stats = {}
@@ -108,8 +102,7 @@ class MainWindow(QMainWindow):
         
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Enter or paste text to redact...")
-        # Connect text changed event for real-time preview
-        self.text_input.textChanged.connect(self._schedule_preview)
+        # Remove the real-time preview connection
         input_layout.addWidget(self.text_input)
         
         # Button row
@@ -123,10 +116,7 @@ class MainWindow(QMainWindow):
         self.clear_input_button.clicked.connect(self._clear_input)
         button_layout.addWidget(self.clear_input_button)
         
-        # Real-time preview toggle
-        self.realtime_preview_checkbox = QCheckBox("Real-time Preview")
-        self.realtime_preview_checkbox.setChecked(True)
-        button_layout.addWidget(self.realtime_preview_checkbox)
+        # Remove the real-time preview checkbox completely
         
         # Split view toggle
         self.split_view_checkbox = QCheckBox("Split View")
@@ -148,7 +138,7 @@ class MainWindow(QMainWindow):
         self.sensitivity_combo.addItems(["Low", "Medium", "High"])
         self.sensitivity_combo.setCurrentText("Medium")
         self.sensitivity_combo.currentTextChanged.connect(
-            lambda text: self._handle_sensitivity_change(text.lower())
+            lambda text: self.redaction_engine.set_sensitivity(text.lower())
         )
         sensitivity_layout.addWidget(self.sensitivity_combo)
         control_layout.addLayout(sensitivity_layout)
@@ -164,8 +154,7 @@ class MainWindow(QMainWindow):
         for category in self.redaction_engine.rule_manager.get_all_categories():
             checkbox = QCheckBox(category)
             checkbox.setChecked(True)
-            # Connect each checkbox to update preview when toggled
-            checkbox.stateChanged.connect(self._schedule_preview)
+            # Remove preview connection from checkboxes
             checkbox_layout.addWidget(checkbox)
             self.category_checkboxes[category] = checkbox
         
@@ -186,7 +175,6 @@ class MainWindow(QMainWindow):
         self.use_nlp_checkbox.setEnabled(self.redaction_engine.use_nlp)
         if not self.redaction_engine.use_nlp:
             self.use_nlp_checkbox.setToolTip("NLP features are not available. Install spaCy to enable this feature.")
-        self.use_nlp_checkbox.stateChanged.connect(self._schedule_preview)
         redact_layout.addWidget(self.use_nlp_checkbox)
         
         control_layout.addLayout(redact_layout)
@@ -236,7 +224,7 @@ class MainWindow(QMainWindow):
         # Highlight option for output
         self.highlight_checkbox = QCheckBox("Highlight Redactions")
         self.highlight_checkbox.setChecked(True)
-        self.highlight_checkbox.stateChanged.connect(self._schedule_preview)
+        # Remove preview connection
         output_button_layout.addWidget(self.highlight_checkbox)
         
         output_layout.addLayout(output_button_layout)
@@ -786,27 +774,7 @@ class MainWindow(QMainWindow):
         # Would load settings from the settings manager
         pass
     
-    def _schedule_preview(self) -> None:
-        """Schedule a preview update with throttling."""
-        if not self.realtime_preview_checkbox.isChecked():
-            return
-            
-        current_time = time.time() * 1000  # Convert to ms
-        time_since_last = current_time - self.last_preview_time
-        
-        # Cancel any pending timer
-        if self.preview_timer.isActive():
-            self.preview_timer.stop()
-        
-        # If typing is fast, use a longer delay to avoid too frequent updates
-        if time_since_last < self.preview_throttle_threshold:
-            delay = self.preview_delay
-        else:
-            delay = 100  # Shorter delay if typing is slow
-            
-        # Start the timer
-        self.preview_timer.start(delay)
-        self.last_preview_time = current_time
+    # Remove the _schedule_preview method completely
     
     def _update_preview(self) -> None:
         """Update the preview with current redaction settings."""
@@ -987,13 +955,7 @@ class MainWindow(QMainWindow):
                 count_label = self.stats_count_labels[category]
                 count_label.setText(str(count))
     
-    def _handle_sensitivity_change(self, level: str) -> None:
-        """Handle sensitivity level changes."""
-        # Set the engine sensitivity level
-        self.redaction_engine.set_sensitivity(level)
-        
-        # Update the preview
-        self._schedule_preview()
+    # Remove the _handle_sensitivity_change method
     
     def _toggle_split_view(self, state: int) -> None:
         """Toggle between normal and split view modes."""
@@ -1050,8 +1012,39 @@ class MainWindow(QMainWindow):
             
             # Apply highlighting if enabled
             if self.highlight_checkbox.isChecked():
-                # Use the preview function for highlighting
-                self._update_preview()
+                # Use highlighting but apply it directly here instead of calling preview
+                colored_text = redacted_text
+                
+                # Define colors for different categories
+                category_colors = {
+                    "PII": "#ff5555",       # Red
+                    "PHI": "#5555ff",       # Blue
+                    "FINANCIAL": "#55aa55", # Green
+                    "CREDENTIALS": "#aa55aa", # Purple
+                    "LOCATIONS": "#aaaa55"  # Yellow
+                }
+                
+                # Replace redaction markers with colored spans
+                for category in selected_categories:
+                    color = category_colors.get(category, "#aaaaaa")  # Default to gray
+                    # Pattern to match category markers like [PII:SSN]
+                    pattern = f'\\[{category}:[^\\]]+\\]'
+                    
+                    # Replace with colored versions
+                    colored_matches = []
+                    for match in re.finditer(pattern, colored_text):
+                        marker = match.group(0)
+                        # Replace with HTML
+                        colored_match = f'<span style="background-color: {color}; color: white;">{marker}</span>'
+                        colored_matches.append((marker, colored_match))
+                    
+                    # Apply replacements from longest to shortest to avoid issues
+                    colored_matches.sort(key=lambda x: len(x[0]), reverse=True)
+                    for original, colored in colored_matches:
+                        colored_text = colored_text.replace(original, colored)
+                
+                # Display with HTML formatting
+                self.text_output.setHtml(colored_text)
             else:
                 # Just use plain text
                 self.text_output.setPlainText(redacted_text)
