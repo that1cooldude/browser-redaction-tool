@@ -5,17 +5,18 @@ Main window for the PyQt6-based redaction system UI.
 from typing import Dict, List, Optional, Tuple, Any
 import re
 
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import Qt, pyqtSlot, QSortFilterProxyModel
 from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
-    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar
+    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+    QScrollArea, QFormLayout, QSlider, QLineEdit
 )
 
-from python_redaction_system.core.redaction_engine import RedactionEngine
-from python_redaction_system.storage.custom_terms import CustomTermsManager
-from python_redaction_system.config.settings import SettingsManager
+from core.redaction_engine import RedactionEngine
+from storage.custom_terms import CustomTermsManager
+from config.settings import SettingsManager
 
 
 class MainWindow(QMainWindow):
@@ -143,22 +144,44 @@ class MainWindow(QMainWindow):
         sensitivity_layout.addWidget(self.sensitivity_combo)
         control_layout.addLayout(sensitivity_layout)
         
-        # Category selection
+        # Category selection with a scrollable area for many categories
         category_layout = QVBoxLayout()
         category_layout.addWidget(QLabel("Categories to Apply:"))
         self.category_checkboxes = {}
+        
+        # Create a scrollable area for the checkboxes in case there are many categories
+        category_scroll = QScrollArea()
+        category_scroll.setWidgetResizable(True)
         category_widget = QWidget()
         checkbox_layout = QVBoxLayout(category_widget)
+        checkbox_layout.setSpacing(2)  # Tighter spacing for many checkboxes
         
         # Categories will be loaded later
-        for category in self.redaction_engine.rule_manager.get_all_categories():
+        categories = self.redaction_engine.rule_manager.get_all_categories()
+        for category in categories:
             checkbox = QCheckBox(category)
             checkbox.setChecked(True)
             # Remove preview connection from checkboxes
             checkbox_layout.addWidget(checkbox)
             self.category_checkboxes[category] = checkbox
+            
+        # Add select all/none buttons if there are many categories
+        if len(categories) > 5:
+            select_buttons_layout = QHBoxLayout()
+            select_all_button = QPushButton("Select All")
+            select_all_button.clicked.connect(lambda: self._set_all_categories(True))
+            select_none_button = QPushButton("Select None")
+            select_none_button.clicked.connect(lambda: self._set_all_categories(False))
+            
+            select_buttons_layout.addWidget(select_all_button)
+            select_buttons_layout.addWidget(select_none_button)
+            checkbox_layout.addLayout(select_buttons_layout)
         
-        category_layout.addWidget(category_widget)
+        # Configure the scroll area
+        category_scroll.setWidget(category_widget)
+        category_scroll.setMaximumHeight(200)  # Limit height for usability
+        category_layout.addWidget(category_scroll)
+        
         control_layout.addLayout(category_layout)
         
         # Redact button
@@ -176,6 +199,17 @@ class MainWindow(QMainWindow):
         if not self.redaction_engine.use_nlp:
             self.use_nlp_checkbox.setToolTip("NLP features are not available. Install spaCy to enable this feature.")
         redact_layout.addWidget(self.use_nlp_checkbox)
+        
+        # Add context preservation and pseudonymization options
+        self.preserve_context_checkbox = QCheckBox("Preserve Text Context")
+        self.preserve_context_checkbox.setChecked(self.redaction_engine.preserve_context)
+        self.preserve_context_checkbox.setToolTip("Maintain document flow by preserving grammatical structure")
+        redact_layout.addWidget(self.preserve_context_checkbox)
+        
+        self.use_pseudonyms_checkbox = QCheckBox("Use Pseudonyms")
+        self.use_pseudonyms_checkbox.setChecked(self.redaction_engine.use_pseudonyms)
+        self.use_pseudonyms_checkbox.setToolTip("Replace entities with realistic but fake values instead of redaction markers")
+        redact_layout.addWidget(self.use_pseudonyms_checkbox)
         
         control_layout.addLayout(redact_layout)
         
@@ -556,8 +590,8 @@ class MainWindow(QMainWindow):
         try:
             # Make sure custom terms manager is initialized
             if not self.redaction_engine.rule_manager.custom_terms_manager:
-                from python_redaction_system.storage.custom_terms import CustomTermsManager
-                from python_redaction_system.storage.database import DatabaseManager
+                from storage.custom_terms import CustomTermsManager
+                from storage.database import DatabaseManager
                 
                 db_manager = DatabaseManager()
                 custom_terms_manager = CustomTermsManager(db_manager)
@@ -700,8 +734,8 @@ class MainWindow(QMainWindow):
             
             # Import the rules
             if not self.redaction_engine.rule_manager.custom_terms_manager:
-                from python_redaction_system.storage.custom_terms import CustomTermsManager
-                from python_redaction_system.storage.database import DatabaseManager
+                from storage.custom_terms import CustomTermsManager
+                from storage.database import DatabaseManager
                 
                 db_manager = DatabaseManager()
                 custom_terms_manager = CustomTermsManager(db_manager)
@@ -759,20 +793,186 @@ class MainWindow(QMainWindow):
         Args:
             tab_widget: The widget to add components to.
         """
-        # This would be implemented with settings for the application
         layout = QVBoxLayout(tab_widget)
-        layout.addWidget(QLabel("Settings management will be implemented here"))
         
-        # This would include:
-        # - Export format settings
-        # - UI theme settings
-        # - Default paths
-        # - Log retention settings
+        # Create a scroll area to hold all settings
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+        
+        # Application settings section
+        app_settings_group = QGroupBox("Application Settings")
+        app_settings_layout = QFormLayout(app_settings_group)
+        
+        # Default saving location
+        self.default_save_path = QLineEdit(self.settings_manager.get("default_save_path", ""))
+        browse_button = QPushButton("Browse...")
+        browse_button.clicked.connect(self._select_default_save_path)
+        save_path_layout = QHBoxLayout()
+        save_path_layout.addWidget(self.default_save_path)
+        save_path_layout.addWidget(browse_button)
+        app_settings_layout.addRow("Default Save Path:", save_path_layout)
+        
+        # Autosave settings
+        self.autosave_checkbox = QCheckBox("Enable autosave")
+        self.autosave_checkbox.setChecked(self.settings_manager.get("enable_autosave", False))
+        app_settings_layout.addRow(self.autosave_checkbox)
+        
+        # NLP settings section
+        nlp_settings_group = QGroupBox("Natural Language Processing")
+        nlp_settings_layout = QFormLayout(nlp_settings_group)
+        
+        # NLP Model selection
+        self.nlp_model_combo = QComboBox()
+        model_options = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
+        self.nlp_model_combo.addItems(model_options)
+        current_model = self.settings_manager.get("nlp_model", "en_core_web_sm")
+        self.nlp_model_combo.setCurrentText(current_model)
+        nlp_settings_layout.addRow("NLP Model:", self.nlp_model_combo)
+        
+        # NLP confidence threshold
+        self.nlp_confidence_slider = QSlider(Qt.Orientation.Horizontal)
+        self.nlp_confidence_slider.setRange(50, 100)
+        self.nlp_confidence_slider.setValue(int(self.settings_manager.get("nlp_confidence", 85)))
+        self.nlp_confidence_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.nlp_confidence_slider.setTickInterval(5)
+        
+        slider_layout = QHBoxLayout()
+        slider_layout.addWidget(QLabel("Low"))
+        slider_layout.addWidget(self.nlp_confidence_slider)
+        slider_layout.addWidget(QLabel("High"))
+        nlp_settings_layout.addRow("NLP Confidence:", slider_layout)
+        
+        # Default redaction settings
+        redaction_settings_group = QGroupBox("Default Redaction Settings")
+        redaction_settings_layout = QFormLayout(redaction_settings_group)
+        
+        # Default sensitivity
+        self.default_sensitivity_combo = QComboBox()
+        self.default_sensitivity_combo.addItems(["Low", "Medium", "High"])
+        self.default_sensitivity_combo.setCurrentText(
+            self.settings_manager.get("default_sensitivity", "Medium")
+        )
+        redaction_settings_layout.addRow("Default Sensitivity:", self.default_sensitivity_combo)
+        
+        # Default to pseudonyms
+        self.default_pseudonyms_checkbox = QCheckBox()
+        self.default_pseudonyms_checkbox.setChecked(
+            self.settings_manager.get("default_use_pseudonyms", True)
+        )
+        redaction_settings_layout.addRow("Use Pseudonyms by Default:", self.default_pseudonyms_checkbox)
+        
+        # Default to context preservation
+        self.default_context_checkbox = QCheckBox()
+        self.default_context_checkbox.setChecked(
+            self.settings_manager.get("default_preserve_context", True)
+        )
+        redaction_settings_layout.addRow("Preserve Context by Default:", self.default_context_checkbox)
+        
+        # Add sections to layout
+        settings_layout.addWidget(app_settings_group)
+        settings_layout.addWidget(nlp_settings_group)
+        settings_layout.addWidget(redaction_settings_group)
+        
+        # Add buttons for saving/resetting settings
+        buttons_layout = QHBoxLayout()
+        
+        save_settings_button = QPushButton("Save Settings")
+        save_settings_button.clicked.connect(self._save_settings)
+        buttons_layout.addWidget(save_settings_button)
+        
+        reset_settings_button = QPushButton("Reset to Defaults")
+        reset_settings_button.clicked.connect(self._reset_settings)
+        buttons_layout.addWidget(reset_settings_button)
+        
+        settings_layout.addLayout(buttons_layout)
+        settings_layout.addStretch()
+        
+        # Finalize the scroll area
+        scroll_area.setWidget(settings_widget)
+        layout.addWidget(scroll_area)
     
     def _load_settings(self) -> None:
         """Load application settings."""
-        # Would load settings from the settings manager
-        pass
+        # Apply settings to the application
+        # Set default sensitivity level
+        default_sensitivity = self.settings_manager.get("default_sensitivity", "Medium")
+        self.sensitivity_combo.setCurrentText(default_sensitivity)
+        self.redaction_engine.set_sensitivity(default_sensitivity.lower())
+        
+        # Set default pseudonym and context preservation settings
+        self.use_pseudonyms_checkbox.setChecked(
+            self.settings_manager.get("default_use_pseudonyms", True)
+        )
+        self.preserve_context_checkbox.setChecked(
+            self.settings_manager.get("default_preserve_context", True)
+        )
+        
+        # Apply NLP settings
+        if self.redaction_engine.use_nlp:
+            self.redaction_engine.nlp_model_name = self.settings_manager.get(
+                "nlp_model", "en_core_web_sm"
+            )
+            self.redaction_engine.ner_confidence = self.settings_manager.get(
+                "nlp_confidence", 85
+            ) / 100.0
+            
+    def _select_default_save_path(self) -> None:
+        """Open a dialog to select the default save path."""
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Default Save Directory", self.default_save_path.text()
+        )
+        if directory:
+            self.default_save_path.setText(directory)
+            
+    def _save_settings(self) -> None:
+        """Save the current settings."""
+        # Save application settings
+        self.settings_manager.set("default_save_path", self.default_save_path.text())
+        self.settings_manager.set("enable_autosave", self.autosave_checkbox.isChecked())
+        
+        # Save NLP settings
+        self.settings_manager.set("nlp_model", self.nlp_model_combo.currentText())
+        self.settings_manager.set("nlp_confidence", self.nlp_confidence_slider.value())
+        
+        # Save default redaction settings
+        self.settings_manager.set("default_sensitivity", self.default_sensitivity_combo.currentText())
+        self.settings_manager.set("default_use_pseudonyms", self.default_pseudonyms_checkbox.isChecked())
+        self.settings_manager.set("default_preserve_context", self.default_context_checkbox.isChecked())
+        
+        # Apply settings immediately
+        self._load_settings()
+        
+        # Show confirmation
+        self.statusBar().showMessage("Settings saved successfully")
+        
+    def _reset_settings(self) -> None:
+        """Reset settings to default values."""
+        confirm = QMessageBox.question(
+            self, "Confirm Reset", 
+            "Are you sure you want to reset all settings to defaults?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if confirm == QMessageBox.StandardButton.Yes:
+            # Reset settings in the manager
+            self.settings_manager.reset()
+            
+            # Reload UI with default values
+            self.default_save_path.setText("")
+            self.autosave_checkbox.setChecked(False)
+            self.nlp_model_combo.setCurrentText("en_core_web_sm")
+            self.nlp_confidence_slider.setValue(85)
+            self.default_sensitivity_combo.setCurrentText("Medium")
+            self.default_pseudonyms_checkbox.setChecked(True)
+            self.default_context_checkbox.setChecked(True)
+            
+            # Apply settings
+            self._load_settings()
+            
+            # Show confirmation
+            self.statusBar().showMessage("Settings reset to defaults")
     
     # Remove the _schedule_preview method completely
     
@@ -890,8 +1090,14 @@ class MainWindow(QMainWindow):
                 widget.setVisible(False)
             return
             
+        # Determine top rules by count
+        top_rules = self.redaction_engine.get_rule_statistics()
+        top_rules_text = ""
+        if top_rules:
+            top_rules_text = "\nTop patterns: " + ", ".join([f"{rule} ({count})" for rule, count in top_rules[:3]])
+            
         # Update the summary label
-        self.stats_label.setText(f"Total redactions: {total_redactions}")
+        self.stats_label.setText(f"Total redactions: {total_redactions}{top_rules_text}")
         
         # Clear existing progress bars if categories changed
         if set(stats.keys()) != set(self.stats_progress_bars.keys()):
@@ -980,6 +1186,15 @@ class MainWindow(QMainWindow):
             self.original_view.clear()
         self.stats_group.setVisible(False)
     
+    def _set_all_categories(self, checked: bool) -> None:
+        """Set all category checkboxes to checked or unchecked.
+        
+        Args:
+            checked: Whether to check or uncheck all categories.
+        """
+        for checkbox in self.category_checkboxes.values():
+            checkbox.setChecked(checked)
+            
     def _redact_text(self) -> None:
         """Redact the input text and display the result."""
         input_text = self.text_input.toPlainText()
@@ -1003,11 +1218,16 @@ class MainWindow(QMainWindow):
             if self.split_view_checkbox.isChecked():
                 self.original_view.setPlainText(input_text)
             
-            # Check if NLP should be used
+            # Get all redaction settings from checkboxes
             use_nlp = self.use_nlp_checkbox.isChecked()
+            preserve_context = self.preserve_context_checkbox.isChecked()
+            use_pseudonyms = self.use_pseudonyms_checkbox.isChecked()
             
             redacted_text, stats = self.redaction_engine.redact_text(
-                input_text, selected_categories, use_nlp=use_nlp
+                input_text, selected_categories, 
+                use_nlp=use_nlp,
+                preserve_context=preserve_context,
+                use_pseudonyms=use_pseudonyms
             )
             
             # Apply highlighting if enabled
@@ -1059,16 +1279,64 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error during redaction: {str(e)}")
     
     def _load_from_file(self) -> None:
-        """Load text from a file."""
+        """Load text from a file with support for multiple document types."""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Text File", "", "Text Files (*.txt);;All Files (*)"
+            self, "Open Document", "", 
+            "All Supported Files (*.txt *.pdf *.docx *.doc *.xlsx *.xls *.pptx *.html *.htm *.jpg *.jpeg *.png);;Text Files (*.txt);;PDF Files (*.pdf);;Word Documents (*.docx *.doc);;Excel Files (*.xlsx *.xls);;PowerPoint Files (*.pptx);;Web Files (*.html *.htm);;Image Files (*.jpg *.jpeg *.png *.bmp *.tiff *.gif);;All Files (*)"
         )
         
         if file_path:
             try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    self.text_input.setPlainText(file.read())
-                self.statusBar().showMessage(f"Loaded text from {file_path}")
+                # Show a progress dialog for large files
+                progress = QProgressDialog("Extracting text from document...", "Cancel", 0, 100, self)
+                progress.setWindowTitle("Loading Document")
+                progress.setWindowModality(Qt.WindowModality.WindowModal)
+                progress.setValue(10)
+                
+                # Import document processor here to avoid circular imports
+                from core.document_processor import DocumentProcessor
+                
+                # Get appropriate processor for file type
+                processor = DocumentProcessor.get_processor_for_file(file_path)
+                
+                progress.setValue(30)
+                
+                # Extract text content
+                extracted_text = processor.extract_text(file_path)
+                
+                progress.setValue(70)
+                
+                # Get metadata
+                metadata = processor.get_metadata(file_path)
+                
+                progress.setValue(90)
+                
+                # Set text in the input field
+                self.text_input.setPlainText(extracted_text)
+                
+                # Display some metadata in status bar
+                if 'filename' in metadata:
+                    self.statusBar().showMessage(f"Loaded {metadata.get('filename')}")
+                    
+                    # If additional metadata is available, show a richer message
+                    if 'pages' in metadata:
+                        self.statusBar().showMessage(f"Loaded {metadata.get('filename')} ({metadata.get('pages')} pages)")
+                    elif 'slide_count' in metadata:
+                        self.statusBar().showMessage(f"Loaded {metadata.get('filename')} ({metadata.get('slide_count')} slides)")
+                    elif 'sheet_count' in metadata:
+                        self.statusBar().showMessage(f"Loaded {metadata.get('filename')} ({metadata.get('sheet_count')} sheets)")
+                else:
+                    self.statusBar().showMessage(f"Loaded document from {file_path}")
+                
+                progress.setValue(100)
+                
+            except ImportError as e:
+                # Handle missing optional dependencies
+                QMessageBox.warning(
+                    self, "Missing Dependency", 
+                    f"Could not process this file type because a required dependency is missing: {str(e)}\n\n"
+                    f"Please check requirements.txt for the necessary packages."
+                )
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error loading file: {str(e)}")
     

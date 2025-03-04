@@ -6,7 +6,7 @@ import os
 import json
 from typing import Any, Dict, Optional
 
-from python_redaction_system.config.defaults import DEFAULT_SETTINGS
+from config.defaults import DEFAULT_SETTINGS
 
 
 class SettingsManager:

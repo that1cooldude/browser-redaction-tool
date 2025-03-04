@@ -10,12 +10,13 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from python_redaction_system.core.redaction_engine import RedactionEngine
-from python_redaction_system.core.rule_manager import RuleManager
-from python_redaction_system.storage.custom_terms import CustomTermsManager
-from python_redaction_system.storage.database import DatabaseManager
-from python_redaction_system.config.settings import SettingsManager
-from python_redaction_system.ui.main_window import MainWindow
+# Fix imports to use local modules
+from core.redaction_engine import RedactionEngine
+from core.rule_manager import RuleManager
+from storage.custom_terms import CustomTermsManager
+from storage.database import DatabaseManager
+from config.settings import SettingsManager
+from ui.main_window import MainWindow
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):

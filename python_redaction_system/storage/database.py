@@ -7,7 +7,7 @@ import platform
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
-from python_redaction_system.config.settings import SettingsManager
+from config.settings import SettingsManager
 
 
 class DatabaseManager:

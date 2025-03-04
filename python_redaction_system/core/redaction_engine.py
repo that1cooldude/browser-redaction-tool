@@ -8,8 +8,9 @@ import logging
 import functools
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 
-from python_redaction_system.core.rule_manager import RuleManager
-from python_redaction_system.config.defaults import NLP_SETTINGS
+from core.rule_manager import RuleManager
+from core.semantic_redaction import SemanticRedactionEngine
+from config.defaults import NLP_SETTINGS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +25,9 @@ class RedactionEngine:
     Main redaction engine that handles the redaction of sensitive information
     from text using predefined and custom rules, with optional NLP-based entity detection.
     """
+    
+    # Track which rules matched in the most recent redaction
+    _last_rule_matches = {}
 
     # Entity type mapping from spaCy to our categories
     ENTITY_TYPE_MAPPING = {
@@ -66,6 +70,17 @@ class RedactionEngine:
         self.nlp_model_name = NLP_SETTINGS.get("spacy_model", "en_core_web_sm")
         self.ner_confidence = NLP_SETTINGS.get("ner_confidence_threshold", 0.85)
         self.nlp = None
+        
+        # Initialize semantic redaction engine
+        try:
+            self.semantic_engine = SemanticRedactionEngine()
+        except Exception as e:
+            warnings.warn(f"Could not initialize semantic redaction engine: {str(e)}")
+            self.semantic_engine = None
+        
+        # Document handling settings
+        self.use_pseudonyms = True  # Use fake data instead of [REDACTED] markers
+        self.preserve_context = True  # Preserve document flow and context
         
         # Try to load spaCy if use_nlp is enabled, but make it optional
         self.nlp = None  # Default to None to indicate spaCy is not available
@@ -272,7 +287,8 @@ class RedactionEngine:
         
         return highlighted_text, entities_found
     
-    def redact_text(self, text: str, categories: Optional[List[str]] = None, use_nlp: bool = True) -> Tuple[str, Dict[str, int]]:
+    def redact_text(self, text: str, categories: Optional[List[str]] = None, use_nlp: bool = True, 
+                  use_pseudonyms: Optional[bool] = None, preserve_context: Optional[bool] = None) -> Tuple[str, Dict[str, int]]:
         """
         Redact sensitive information from the input text based on selected categories.
         
@@ -281,6 +297,10 @@ class RedactionEngine:
             categories: List of categories to apply (e.g., ["PII", "PHI"]).
                         If None, all available categories will be applied.
             use_nlp: Whether to use NLP-based entity detection in addition to rule-based redaction.
+            use_pseudonyms: Whether to use generated fake data instead of generic markers.
+                           If None, uses the instance default setting.
+            preserve_context: Whether to preserve document flow and context.
+                             If None, uses the instance default setting.
         
         Returns:
             A tuple of (redacted_text, redaction_stats) where redaction_stats is a 
@@ -290,11 +310,20 @@ class RedactionEngine:
             # Get all categories based on sensitivity level
             categories = self.rule_manager.get_categories_for_sensitivity(self.sensitivity_level)
         
+        # Use instance defaults if not specified
+        use_pseudonyms = self.use_pseudonyms if use_pseudonyms is None else use_pseudonyms
+        preserve_context = self.preserve_context if preserve_context is None else preserve_context
+        
         # Track redaction statistics
         redaction_stats = {category: 0 for category in categories}
-        redacted_text = text
         
-        # Apply NLP-based redaction if enabled
+        # Reset rule match tracking
+        self._last_rule_matches = {}
+        
+        # Collect all entities to redact (for semantic redaction)
+        all_detected_entities = {}
+        
+        # Apply NLP-based detection if enabled
         if use_nlp and self.use_nlp and self.nlp is not None:
             try:
                 # Detect entities
@@ -303,42 +332,165 @@ class RedactionEngine:
                 # Filter by selected categories
                 filtered_entities = {cat: ents for cat, ents in entities_by_category.items() if cat in categories}
                 
-                # Convert to patterns
-                nlp_patterns = self.entities_to_patterns(filtered_entities)
+                # Process entities for semantic redaction
+                for category, entities in filtered_entities.items():
+                    if category not in all_detected_entities:
+                        all_detected_entities[category] = []
+                    
+                    for entity_text, confidence, entity_type in entities:
+                        # Skip if entity is empty or just whitespace
+                        if not entity_text or entity_text.isspace():
+                            continue
+                            
+                        all_detected_entities[category].append((entity_text, entity_type))
+                        redaction_stats[category] += 1
                 
-                # Apply NLP-based patterns
-                for category, patterns in nlp_patterns.items():
-                    for rule_name, pattern in patterns.items():
-                        # Count matches
-                        matches = re.findall(pattern, redacted_text)
-                        redaction_stats[category] += len(matches)
-                        
-                        # Replace matches with redaction marker
-                        redacted_text = re.sub(
-                            pattern, 
-                            f"[{category}:{rule_name}]", 
-                            redacted_text
-                        )
             except Exception as e:
-                logger.warning(f"Error in NLP-based redaction: {str(e)}")
+                logger.warning(f"Error in NLP-based detection: {str(e)}")
                 # Continue with rule-based redaction
         
-        # Apply rule-based redaction
+        # Apply rule-based detection - now with more careful handling of overlapping matches
+        detected_spans = set()  # Track character spans to avoid duplicate matches
+        
         for category in categories:
             rules = self.rule_manager.get_rules_for_category(category)
+            
+            if category not in all_detected_entities:
+                all_detected_entities[category] = []
+            
             for rule_name, pattern in rules.items():
-                # Count matches
-                matches = re.findall(pattern, redacted_text)
-                redaction_stats[category] += len(matches)
+                try:
+                    # Use re.finditer to get match positions for overlap checking
+                    for match in re.finditer(pattern, text):
+                        # Extract the matched text
+                        if match.groups():
+                            # If there are capture groups, use the first one
+                            match_text = match.group(1)
+                            match_span = match.span(1)
+                        else:
+                            # Otherwise use the entire match
+                            match_text = match.group(0)
+                            match_span = match.span(0)
+                        
+                        # Skip if the match is empty or just whitespace
+                        if not match_text or match_text.isspace():
+                            continue
+                            
+                        # Check if this match overlaps with an existing match
+                        overlap = False
+                        spans_to_remove = []
+                        
+                        for start, end in detected_spans:
+                            # Check for any overlap between spans
+                            if (match_span[0] <= end and match_span[1] >= start):
+                                # If there's overlap, only replace this match if it's longer
+                                if (match_span[1] - match_span[0]) <= (end - start):
+                                    overlap = True
+                                    break
+                                else:
+                                    # Mark the smaller span for removal
+                                    spans_to_remove.append((start, end))
+                        
+                        # Remove any spans that should be replaced (outside the iteration loop)
+                        for span in spans_to_remove:
+                            detected_spans.remove(span)
+                                    
+                        if not overlap:
+                            # Add this match to our tracking sets
+                            detected_spans.add(match_span)
+                            all_detected_entities[category].append((match_text, rule_name))
+                            redaction_stats[category] += 1
+                            
+                            # Track which rules matched for statistics
+                            self._last_rule_matches[rule_name] = self._last_rule_matches.get(rule_name, 0) + 1
+                except Exception as e:
+                    logger.warning(f"Error processing pattern '{rule_name}': {str(e)}")
+                    continue
+        
+        # Perform redaction with context preservation if requested
+        if preserve_context and self.semantic_engine is not None:
+            redacted_text = self.semantic_engine.redact_text_with_context(
+                text, all_detected_entities, use_pseudonyms=use_pseudonyms
+            )
+        else:
+            # Enhanced pattern-based redaction with better overlap handling
+            redacted_text = list(text)  # Convert to list for character-by-character replacement
+            
+            # Sort matches by position to ensure proper replacement order
+            span_to_replacement = {}
+            
+            # Process all detected entities
+            for category, entity_list in all_detected_entities.items():
+                for entity_text, entity_type in entity_list:
+                    # Generate replacement text
+                    if use_pseudonyms and self.semantic_engine is not None:
+                        replacement = self.semantic_engine.entity_tracker.get_replacement(
+                            category, entity_text, entity_type
+                        )
+                    else:
+                        replacement = f"[{category}:{entity_type}]"
+                    
+                    # Find all occurrences of this entity in the text
+                    start_pos = 0
+                    while True:
+                        pos = text.find(entity_text, start_pos)
+                        if pos == -1:
+                            break
+                            
+                        end_pos = pos + len(entity_text)
+                        span = (pos, end_pos)
+                        
+                        # Check if this span overlaps with an already-replaced span
+                        overlap = False
+                        spans_to_remove = []
+                        
+                        for existing_span in span_to_replacement.keys():
+                            if span[0] < existing_span[1] and span[1] > existing_span[0]:
+                                # If there's overlap, prefer the longer replacement
+                                if (span[1] - span[0]) > (existing_span[1] - existing_span[0]):
+                                    # Mark smaller span for removal
+                                    spans_to_remove.append(existing_span)
+                                else:
+                                    overlap = True
+                                    break
+                                    
+                        # Remove any spans that should be replaced (outside the iteration loop)
+                        for to_remove in spans_to_remove:
+                            span_to_replacement.pop(to_remove)
+                                    
+                        if not overlap:
+                            span_to_replacement[span] = replacement
+                            
+                        start_pos = end_pos
+            
+            # Apply replacements in order (from end to beginning to maintain positions)
+            sorted_spans = sorted(span_to_replacement.keys(), reverse=True)
+            for span in sorted_spans:
+                start, end = span
+                replacement = span_to_replacement[span]
                 
-                # Replace matches with redaction marker
-                redacted_text = re.sub(
-                    pattern, 
-                    f"[{category}:{rule_name}]", 
-                    redacted_text
-                )
+                # Replace the characters in the list
+                redacted_text[start:end] = list(replacement)
+            
+            # Convert back to string
+            redacted_text = ''.join(redacted_text)
         
         return redacted_text, redaction_stats
+    
+    def get_rule_statistics(self) -> List[Tuple[str, int]]:
+        """
+        Get statistics on which rules matched in the most recent redaction.
+        
+        Returns:
+            A list of tuples (rule_name, count) sorted by count in descending order.
+        """
+        # Sort the rules by number of matches
+        sorted_rules = sorted(
+            self._last_rule_matches.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        return sorted_rules or []  # Return empty list if no rules matched
     
     def analyze_text(self, text: str) -> Dict[str, List[str]]:
         """
