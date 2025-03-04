@@ -3,6 +3,7 @@ Database management for the redaction system.
 """
 
 import os
+import platform
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -34,9 +35,30 @@ class DatabaseManager:
             The path to the database file.
         """
         if self.settings_manager:
-            return self.settings_manager.get("database_path", 
-                                            os.path.expanduser("~/.redaction_system/redaction.db"))
-        return os.path.expanduser("~/.redaction_system/redaction.db")
+            # Get path from settings, with platform-appropriate fallback
+            default_path = self._get_default_db_path()
+            return self.settings_manager.get("database_path", default_path)
+        return self._get_default_db_path()
+    
+    def _get_default_db_path(self) -> str:
+        """
+        Get a platform-appropriate default database path.
+        
+        Returns:
+            The default path for the database file.
+        """
+        system = platform.system()
+        
+        if system == "Windows":
+            # Windows path
+            app_data = os.environ.get("APPDATA", "")
+            return os.path.join(app_data, "TextRedactionSystem", "redaction.db")
+        elif system == "Darwin":  # macOS
+            # macOS path
+            return os.path.expanduser("~/Library/Application Support/TextRedactionSystem/redaction.db")
+        else:
+            # Linux and others
+            return os.path.expanduser("~/.local/share/TextRedactionSystem/redaction.db")
     
     def _initialize_db(self) -> None:
         """Initialize the database schema if it doesn't exist."""

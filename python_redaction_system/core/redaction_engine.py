@@ -67,9 +67,14 @@ class RedactionEngine:
         self.ner_confidence = NLP_SETTINGS.get("ner_confidence_threshold", 0.85)
         self.nlp = None
         
-        # Try to load spaCy if use_nlp is enabled
+        # Try to load spaCy if use_nlp is enabled, but make it optional
+        self.nlp = None  # Default to None to indicate spaCy is not available
         if self.use_nlp:
-            self._load_nlp_model()
+            try:
+                self._load_nlp_model()
+            except Exception as e:
+                warnings.warn(f"Could not initialize NLP features: {str(e)}")
+                self.use_nlp = False
     
     def _load_nlp_model(self) -> None:
         """

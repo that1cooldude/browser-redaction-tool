@@ -71,6 +71,23 @@ python_redaction_system/
 - Follows NIST guidelines for data protection
 - Implements secure data disposal practices
 
+## Platform Compatibility
+
+The application is designed to work across all major platforms:
+
+### Windows
+- Application data stored in `%APPDATA%\TextRedactionSystem\`
+- High-DPI support enabled by default
+- All file paths use Windows-style separators automatically
+
+### macOS
+- Application data stored in `~/Library/Application Support/TextRedactionSystem/`
+- Native look and feel with macOS-specific UI enhancements
+
+### Linux
+- Application data stored in `~/.local/share/TextRedactionSystem/`
+- Adapts to various desktop environments
+
 ## Optional Components
 
 - **spaCy NLP**: Enhances entity recognition but application functions without it

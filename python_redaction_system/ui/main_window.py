@@ -180,9 +180,12 @@ class MainWindow(QMainWindow):
         self.redact_button.clicked.connect(self._redact_text)
         redact_layout.addWidget(self.redact_button)
         
-        # Add option to use NLP
+        # Add option to use NLP - only enable if NLP is available
         self.use_nlp_checkbox = QCheckBox("Use NLP Detection")
-        self.use_nlp_checkbox.setChecked(True)
+        self.use_nlp_checkbox.setChecked(self.redaction_engine.use_nlp)
+        self.use_nlp_checkbox.setEnabled(self.redaction_engine.use_nlp)
+        if not self.redaction_engine.use_nlp:
+            self.use_nlp_checkbox.setToolTip("NLP features are not available. Install spaCy to enable this feature.")
         self.use_nlp_checkbox.stateChanged.connect(self._schedule_preview)
         redact_layout.addWidget(self.use_nlp_checkbox)
         
@@ -832,12 +835,24 @@ class MainWindow(QMainWindow):
                 self.original_view.setPlainText(input_text)
             
             # Check if NLP should be used
-            use_nlp = self.use_nlp_checkbox.isChecked()
+            use_nlp = self.use_nlp_checkbox.isChecked() and self.redaction_engine.use_nlp
             
-            # Perform the redaction
-            redacted_text, stats = self.redaction_engine.redact_text(
-                input_text, selected_categories, use_nlp=use_nlp
-            )
+            try:
+                # Perform the redaction
+                redacted_text, stats = self.redaction_engine.redact_text(
+                    input_text, selected_categories, use_nlp=use_nlp
+                )
+            except Exception as e:
+                # Fallback to rule-based redaction if NLP fails
+                if use_nlp:
+                    self.statusBar().showMessage(f"NLP redaction failed, falling back to rules: {str(e)}")
+                    use_nlp = False
+                    redacted_text, stats = self.redaction_engine.redact_text(
+                        input_text, selected_categories, use_nlp=False
+                    )
+                else:
+                    # If not using NLP and still failing, re-raise
+                    raise
             
             # Store stats for displaying
             self.redaction_stats = stats
