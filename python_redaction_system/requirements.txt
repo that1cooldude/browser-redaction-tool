@@ -1,0 +1,14 @@
+# Core dependencies
+PyQt6==6.5.3
+regex==2023.10.3
+spacy==3.7.4
+cryptography==41.0.5
+SQLite3==2.6.0
+pyyaml==6.0.1
+
+# Testing dependencies
+pytest==7.4.3
+pytest-qt==4.2.0
+
+# Deployment dependencies
+pyinstaller==6.3.0

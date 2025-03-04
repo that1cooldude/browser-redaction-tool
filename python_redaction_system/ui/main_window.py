@@ -1,0 +1,756 @@
+"""
+Main window for the PyQt6-based redaction system UI.
+"""
+
+from typing import Dict, List, Optional
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox,
+    QCheckBox, QTabWidget, QFileDialog, QMessageBox
+)
+
+from python_redaction_system.core.redaction_engine import RedactionEngine
+from python_redaction_system.storage.custom_terms import CustomTermsManager
+from python_redaction_system.config.settings import SettingsManager
+
+
+class MainWindow(QMainWindow):
+    """
+    Main application window for the redaction system.
+    """
+
+    def __init__(self, redaction_engine: Optional[RedactionEngine] = None,
+                 settings_manager: Optional[SettingsManager] = None):
+        """
+        Initialize the main window.
+        
+        Args:
+            redaction_engine: An instance of RedactionEngine. If None, a new instance will be created.
+            settings_manager: An instance of SettingsManager. If None, a new instance will be created.
+        """
+        super().__init__()
+        
+        # Initialize components
+        self.redaction_engine = redaction_engine or RedactionEngine()
+        self.settings_manager = settings_manager or SettingsManager()
+        
+        # Set up UI
+        self.setWindowTitle("Text Redaction System")
+        self.resize(1000, 800)
+        self._create_ui()
+        self._load_settings()
+    
+    def _create_ui(self) -> None:
+        """Create the main UI layout and components."""
+        # Central widget and main layout
+        central_widget = QWidget()
+        main_layout = QVBoxLayout(central_widget)
+        
+        # Create tab widget for different sections
+        tab_widget = QTabWidget()
+        main_layout.addWidget(tab_widget)
+        
+        # Tab 1: Text Redaction
+        redaction_tab = QWidget()
+        tab_widget.addTab(redaction_tab, "Text Redaction")
+        self._create_redaction_tab(redaction_tab)
+        
+        # Tab 2: Rule Management
+        rule_tab = QWidget()
+        tab_widget.addTab(rule_tab, "Rule Management")
+        self._create_rule_management_tab(rule_tab)
+        
+        # Tab 3: Settings
+        settings_tab = QWidget()
+        tab_widget.addTab(settings_tab, "Settings")
+        self._create_settings_tab(settings_tab)
+        
+        # Status bar
+        self.statusBar().showMessage("Ready")
+        
+        self.setCentralWidget(central_widget)
+    
+    def _create_redaction_tab(self, tab_widget: QWidget) -> None:
+        """
+        Create the text redaction tab.
+        
+        Args:
+            tab_widget: The widget to add components to.
+        """
+        layout = QVBoxLayout(tab_widget)
+        
+        # Input section
+        input_group = QGroupBox("Input Text")
+        input_layout = QVBoxLayout(input_group)
+        
+        self.text_input = QTextEdit()
+        self.text_input.setPlaceholderText("Enter or paste text to redact...")
+        input_layout.addWidget(self.text_input)
+        
+        # Button row
+        button_layout = QHBoxLayout()
+        
+        self.load_file_button = QPushButton("Load from File")
+        self.load_file_button.clicked.connect(self._load_from_file)
+        button_layout.addWidget(self.load_file_button)
+        
+        self.clear_input_button = QPushButton("Clear Input")
+        self.clear_input_button.clicked.connect(lambda: self.text_input.clear())
+        button_layout.addWidget(self.clear_input_button)
+        
+        input_layout.addLayout(button_layout)
+        layout.addWidget(input_group)
+        
+        # Control section
+        control_group = QGroupBox("Redaction Controls")
+        control_layout = QHBoxLayout(control_group)
+        
+        # Sensitivity selector
+        sensitivity_layout = QVBoxLayout()
+        sensitivity_layout.addWidget(QLabel("Sensitivity Level:"))
+        self.sensitivity_combo = QComboBox()
+        self.sensitivity_combo.addItems(["Low", "Medium", "High"])
+        self.sensitivity_combo.setCurrentText("Medium")
+        self.sensitivity_combo.currentTextChanged.connect(
+            lambda text: self.redaction_engine.set_sensitivity(text.lower())
+        )
+        sensitivity_layout.addWidget(self.sensitivity_combo)
+        control_layout.addLayout(sensitivity_layout)
+        
+        # Category selection
+        category_layout = QVBoxLayout()
+        category_layout.addWidget(QLabel("Categories to Apply:"))
+        self.category_checkboxes = {}
+        category_widget = QWidget()
+        checkbox_layout = QVBoxLayout(category_widget)
+        
+        # Categories will be loaded later
+        for category in self.redaction_engine.rule_manager.get_all_categories():
+            checkbox = QCheckBox(category)
+            checkbox.setChecked(True)
+            checkbox_layout.addWidget(checkbox)
+            self.category_checkboxes[category] = checkbox
+        
+        category_layout.addWidget(category_widget)
+        control_layout.addLayout(category_layout)
+        
+        # Redact button
+        redact_layout = QVBoxLayout()
+        redact_layout.addStretch()
+        self.redact_button = QPushButton("Redact Text")
+        self.redact_button.setMinimumHeight(50)
+        self.redact_button.clicked.connect(self._redact_text)
+        redact_layout.addWidget(self.redact_button)
+        control_layout.addLayout(redact_layout)
+        
+        layout.addWidget(control_group)
+        
+        # Output section
+        output_group = QGroupBox("Redacted Output")
+        output_layout = QVBoxLayout(output_group)
+        
+        self.text_output = QTextEdit()
+        self.text_output.setReadOnly(True)
+        self.text_output.setPlaceholderText("Redacted text will appear here...")
+        output_layout.addWidget(self.text_output)
+        
+        # Output buttons
+        output_button_layout = QHBoxLayout()
+        
+        self.copy_output_button = QPushButton("Copy to Clipboard")
+        self.copy_output_button.clicked.connect(
+            lambda: QApplication.clipboard().setText(self.text_output.toPlainText())
+        )
+        output_button_layout.addWidget(self.copy_output_button)
+        
+        self.save_output_button = QPushButton("Save to File")
+        self.save_output_button.clicked.connect(self._save_to_file)
+        output_button_layout.addWidget(self.save_output_button)
+        
+        output_layout.addLayout(output_button_layout)
+        layout.addWidget(output_group)
+    
+    def _create_rule_management_tab(self, tab_widget: QWidget) -> None:
+        """
+        Create the rule management tab.
+        
+        Args:
+            tab_widget: The widget to add components to.
+        """
+        from PyQt6.QtCore import QSortFilterProxyModel, QAbstractTableModel, Qt, QModelIndex
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import (QTableView, QHeaderView, QSplitter, QFormLayout, 
+                                    QComboBox, QLineEdit, QGroupBox, QRadioButton,
+                                    QButtonGroup, QPushButton, QFileDialog, QMessageBox,
+                                    QInputDialog, QScrollArea)
+        
+        layout = QVBoxLayout(tab_widget)
+        
+        # Create a horizontal splitter for rules table and form
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter)
+        
+        # Left side: Rules table with search
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        
+        # Search box for filtering rules
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("Search Rules:"))
+        self.rule_search = QLineEdit()
+        self.rule_search.setPlaceholderText("Enter search terms...")
+        search_layout.addWidget(self.rule_search)
+        left_layout.addLayout(search_layout)
+        
+        # Rules table
+        self.rules_table = QTableView()
+        self.rules_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.rules_table.setAlternatingRowColors(True)
+        
+        # Rule table model - inner class
+        class RuleTableModel(QAbstractTableModel):
+            def __init__(self, parent, rule_manager):
+                super().__init__(parent)
+                self.rule_manager = rule_manager
+                self.categories = rule_manager.get_all_categories()
+                self.rules_data = []
+                self._refresh_data()
+                
+            def _refresh_data(self):
+                self.rules_data = []
+                for category in self.categories:
+                    rules = self.rule_manager.get_rules_for_category(category)
+                    for rule_name, pattern in rules.items():
+                        self.rules_data.append({
+                            "category": category,
+                            "name": rule_name,
+                            "pattern": pattern,
+                            "is_custom": rule_name not in self.rule_manager._preset_rules.get(category, {})
+                        })
+                self.layoutChanged.emit()
+                
+            def rowCount(self, parent=QModelIndex()):
+                return len(self.rules_data)
+                
+            def columnCount(self, parent=QModelIndex()):
+                return 4  # Category, Name, Pattern, Is Custom
+                
+            def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+                if not index.isValid() or index.row() >= len(self.rules_data):
+                    return None
+                    
+                rule = self.rules_data[index.row()]
+                
+                if role == Qt.ItemDataRole.DisplayRole:
+                    if index.column() == 0:
+                        return rule["category"]
+                    elif index.column() == 1:
+                        return rule["name"]
+                    elif index.column() == 2:
+                        return rule["pattern"]
+                    elif index.column() == 3:
+                        return "Custom" if rule["is_custom"] else "Built-in"
+                
+                elif role == Qt.ItemDataRole.FontRole:
+                    font = QFont()
+                    if rule["is_custom"]:
+                        font.setBold(True)
+                    return font
+                    
+                return None
+                
+            def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+                if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
+                    headers = ["Category", "Rule Name", "Pattern", "Type"]
+                    return headers[section]
+                return None
+                
+            def refresh(self):
+                self.categories = self.rule_manager.get_all_categories()
+                self._refresh_data()
+        
+        # Create filter proxy model for search
+        self.rules_model = RuleTableModel(self, self.redaction_engine.rule_manager)
+        self.rules_proxy_model = QSortFilterProxyModel()
+        self.rules_proxy_model.setSourceModel(self.rules_model)
+        self.rules_proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.rules_proxy_model.setFilterKeyColumn(-1)  # Search all columns
+        
+        self.rules_table.setModel(self.rules_proxy_model)
+        
+        # Connect search box to filter model
+        self.rule_search.textChanged.connect(self.rules_proxy_model.setFilterFixedString)
+        
+        # Set column stretching
+        self.rules_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.rules_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.rules_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.rules_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        
+        left_layout.addWidget(self.rules_table)
+        
+        # Buttons for table operations
+        table_buttons_layout = QHBoxLayout()
+        
+        self.delete_rule_button = QPushButton("Delete Selected Rule")
+        self.delete_rule_button.clicked.connect(self._delete_selected_rule)
+        table_buttons_layout.addWidget(self.delete_rule_button)
+        
+        self.import_rules_button = QPushButton("Import Rules")
+        self.import_rules_button.clicked.connect(self._import_rules)
+        table_buttons_layout.addWidget(self.import_rules_button)
+        
+        self.export_rules_button = QPushButton("Export Rules")
+        self.export_rules_button.clicked.connect(self._export_rules)
+        table_buttons_layout.addWidget(self.export_rules_button)
+        
+        left_layout.addLayout(table_buttons_layout)
+        
+        # Right side: Form for creating/editing rules
+        right_widget = QScrollArea()
+        right_widget.setWidgetResizable(True)
+        form_container = QWidget()
+        right_layout = QVBoxLayout(form_container)
+        right_widget.setWidget(form_container)
+        
+        # Rule creation form
+        rule_form_group = QGroupBox("Create New Rule")
+        rule_form_layout = QFormLayout(rule_form_group)
+        
+        # Category dropdown
+        self.category_combo = QComboBox()
+        self.category_combo.setEditable(True)
+        self.category_combo.setInsertPolicy(QComboBox.InsertPolicy.InsertAlphabetically)
+        self._refresh_category_combo()
+        rule_form_layout.addRow("Category:", self.category_combo)
+        
+        # Rule name field
+        self.rule_name_edit = QLineEdit()
+        self.rule_name_edit.setPlaceholderText("Enter a descriptive name for this rule")
+        rule_form_layout.addRow("Rule Name:", self.rule_name_edit)
+        
+        # Pattern type selector
+        pattern_type_group = QGroupBox("Pattern Type")
+        pattern_type_layout = QVBoxLayout(pattern_type_group)
+        
+        self.pattern_type_group = QButtonGroup(self)
+        self.plain_text_radio = QRadioButton("Plain Text (auto-convert to regex)")
+        self.regex_radio = QRadioButton("Regular Expression")
+        self.pattern_type_group.addButton(self.plain_text_radio, 0)
+        self.pattern_type_group.addButton(self.regex_radio, 1)
+        self.plain_text_radio.setChecked(True)
+        
+        pattern_type_layout.addWidget(self.plain_text_radio)
+        pattern_type_layout.addWidget(self.regex_radio)
+        rule_form_layout.addRow(pattern_type_group)
+        
+        # Pattern entry
+        self.pattern_edit = QTextEdit()
+        self.pattern_edit.setPlaceholderText("Enter pattern to match...")
+        self.pattern_edit.setAcceptRichText(False)
+        self.pattern_edit.setMaximumHeight(100)
+        rule_form_layout.addRow("Pattern:", self.pattern_edit)
+        
+        # Pattern help text
+        help_label = QLabel("For plain text, enter the exact text to redact. Special characters will be handled automatically.\n"
+                         "For regex, use standard regular expression syntax (e.g., \\b\\d{3}-\\d{2}-\\d{4}\\b for SSN).")
+        help_label.setWordWrap(True)
+        rule_form_layout.addRow(help_label)
+        
+        # Add rule button
+        self.add_rule_button = QPushButton("Add Rule")
+        self.add_rule_button.clicked.connect(self._add_rule)
+        rule_form_layout.addRow(self.add_rule_button)
+        
+        right_layout.addWidget(rule_form_group)
+        
+        # Rule testing section
+        test_group = QGroupBox("Test Rule")
+        test_layout = QVBoxLayout(test_group)
+        
+        # Sample text for testing
+        test_layout.addWidget(QLabel("Sample Text:"))
+        self.test_text_edit = QTextEdit()
+        self.test_text_edit.setPlaceholderText("Enter sample text to test your rule against...")
+        test_layout.addWidget(self.test_text_edit)
+        
+        # Test results
+        test_layout.addWidget(QLabel("Test Results:"))
+        self.test_results_edit = QTextEdit()
+        self.test_results_edit.setReadOnly(True)
+        self.test_results_edit.setPlaceholderText("Results will appear here...")
+        test_layout.addWidget(self.test_results_edit)
+        
+        # Test button
+        self.test_rule_button = QPushButton("Test Pattern")
+        self.test_rule_button.clicked.connect(self._test_rule)
+        test_layout.addWidget(self.test_rule_button)
+        
+        right_layout.addWidget(test_group)
+        
+        # Add both sides to splitter
+        splitter.addWidget(left_widget)
+        splitter.addWidget(right_widget)
+        splitter.setSizes([400, 400])  # Set initial sizes
+    
+    def _refresh_category_combo(self) -> None:
+        """Refresh the category dropdown with current categories."""
+        current_text = self.category_combo.currentText() if self.category_combo.count() > 0 else ""
+        
+        self.category_combo.clear()
+        self.category_combo.addItems(self.redaction_engine.rule_manager.get_all_categories())
+        
+        # Add "Create New Category..." option
+        self.category_combo.addItem("-- Create New Category --")
+        
+        # Restore previous selection if it exists
+        if current_text:
+            index = self.category_combo.findText(current_text)
+            if index >= 0:
+                self.category_combo.setCurrentIndex(index)
+        
+        # Connect category combo box signal
+        try:
+            self.category_combo.currentIndexChanged.disconnect()
+        except:
+            pass
+        self.category_combo.currentIndexChanged.connect(self._handle_category_selection)
+    
+    def _handle_category_selection(self, index: int) -> None:
+        """Handle selection in the category dropdown."""
+        if self.category_combo.currentText() == "-- Create New Category --":
+            # Prompt for new category name
+            new_category, ok = QInputDialog.getText(
+                self, "New Category", "Enter name for new category:"
+            )
+            
+            if ok and new_category:
+                # Add the new category to the combo box
+                self.category_combo.removeItem(index)
+                self.category_combo.addItem(new_category)
+                self.category_combo.addItem("-- Create New Category --")
+                new_index = self.category_combo.findText(new_category)
+                self.category_combo.setCurrentIndex(new_index)
+            else:
+                # User canceled, reset to the first item
+                self.category_combo.setCurrentIndex(0)
+    
+    def _add_rule(self) -> None:
+        """Add a new rule from the form."""
+        category = self.category_combo.currentText()
+        rule_name = self.rule_name_edit.text().strip()
+        pattern_text = self.pattern_edit.toPlainText().strip()
+        is_regex = self.regex_radio.isChecked()
+        
+        # Validate inputs
+        if not category or category == "-- Create New Category --":
+            QMessageBox.warning(self, "Validation Error", "Please select or create a category.")
+            return
+        
+        if not rule_name:
+            QMessageBox.warning(self, "Validation Error", "Please enter a name for the rule.")
+            return
+        
+        if not pattern_text:
+            QMessageBox.warning(self, "Validation Error", "Please enter a pattern.")
+            return
+        
+        # Convert plain text to regex if needed
+        import re
+        if not is_regex:
+            # Escape special regex characters
+            pattern = re.escape(pattern_text)
+        else:
+            pattern = pattern_text
+            
+            # Validate regex
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                QMessageBox.critical(self, "Invalid Regex", f"The regular expression is invalid: {str(e)}")
+                return
+        
+        # Add the rule
+        try:
+            # Make sure custom terms manager is initialized
+            if not self.redaction_engine.rule_manager.custom_terms_manager:
+                from python_redaction_system.storage.custom_terms import CustomTermsManager
+                from python_redaction_system.storage.database import DatabaseManager
+                
+                db_manager = DatabaseManager()
+                custom_terms_manager = CustomTermsManager(db_manager)
+                self.redaction_engine.rule_manager.custom_terms_manager = custom_terms_manager
+            
+            # Add the rule
+            self.redaction_engine.rule_manager.add_custom_rule(category, rule_name, pattern)
+            
+            # Refresh the table
+            self.rules_model.refresh()
+            
+            # Clear the form
+            self.rule_name_edit.clear()
+            self.pattern_edit.clear()
+            
+            # Update status
+            self.statusBar().showMessage(f"Rule '{rule_name}' added to category '{category}'.")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error adding rule: {str(e)}")
+    
+    def _delete_selected_rule(self) -> None:
+        """Delete the selected rule from the table."""
+        # Get the selected row
+        selected_indexes = self.rules_table.selectedIndexes()
+        if not selected_indexes:
+            QMessageBox.information(self, "Selection Required", "Please select a rule to delete.")
+            return
+        
+        # Get the rule data from the selected row
+        proxy_index = selected_indexes[0]
+        source_index = self.rules_proxy_model.mapToSource(proxy_index)
+        row = source_index.row()
+        
+        rule_data = self.rules_model.rules_data[row]
+        category = rule_data["category"]
+        rule_name = rule_data["name"]
+        is_custom = rule_data["is_custom"]
+        
+        # Confirm deletion
+        if not is_custom:
+            QMessageBox.warning(self, "Cannot Delete", "Built-in rules cannot be deleted.")
+            return
+        
+        confirm = QMessageBox.question(
+            self, "Confirm Deletion", 
+            f"Are you sure you want to delete the rule '{rule_name}' from category '{category}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if confirm == QMessageBox.StandardButton.Yes:
+            try:
+                # Delete the rule
+                self.redaction_engine.rule_manager.remove_custom_rule(category, rule_name)
+                
+                # Refresh the table
+                self.rules_model.refresh()
+                
+                # Update status
+                self.statusBar().showMessage(f"Rule '{rule_name}' deleted.")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error deleting rule: {str(e)}")
+    
+    def _test_rule(self) -> None:
+        """Test the current pattern against the sample text."""
+        pattern_text = self.pattern_edit.toPlainText().strip()
+        test_text = self.test_text_edit.toPlainText()
+        is_regex = self.regex_radio.isChecked()
+        
+        if not pattern_text:
+            QMessageBox.warning(self, "Validation Error", "Please enter a pattern to test.")
+            return
+        
+        if not test_text:
+            QMessageBox.warning(self, "Validation Error", "Please enter sample text to test against.")
+            return
+        
+        # Convert plain text to regex if needed
+        import re
+        if not is_regex:
+            # Escape special regex characters
+            pattern = re.escape(pattern_text)
+        else:
+            pattern = pattern_text
+        
+        # Test the pattern
+        try:
+            regex = re.compile(pattern)
+            matches = regex.findall(test_text)
+            
+            # Highlight matches in the test text
+            highlighted_text = test_text
+            for match in matches:
+                # If match is a tuple (from capturing groups), use the whole match
+                if isinstance(match, tuple):
+                    match = match[0]
+                
+                # Highlight by replacing with HTML
+                highlighted_text = highlighted_text.replace(
+                    match, f'<span style="background-color: yellow; color: black;">{match}</span>'
+                )
+            
+            # Display results
+            if matches:
+                result_text = f"<h3>Found {len(matches)} matches:</h3>"
+                result_text += "<ul>"
+                for i, match in enumerate(matches, 1):
+                    if isinstance(match, tuple):  # Handle capturing groups
+                        match = match[0]
+                    result_text += f"<li>Match {i}: '{match}'</li>"
+                result_text += "</ul><h3>Highlighted Text:</h3>"
+                result_text += highlighted_text
+            else:
+                result_text = "<h3>No matches found in the sample text.</h3>"
+            
+            self.test_results_edit.setHtml(result_text)
+            
+        except re.error as e:
+            self.test_results_edit.setHtml(f"<h3>Error in regular expression:</h3><p>{str(e)}</p>")
+    
+    def _import_rules(self) -> None:
+        """Import rules from a JSON file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Rules", "", "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            import json
+            
+            with open(file_path, 'r') as f:
+                rules_data = json.load(f)
+            
+            # Validate the structure
+            if not isinstance(rules_data, dict):
+                raise ValueError("Invalid rule file format. Expected a JSON object.")
+            
+            # Import the rules
+            if not self.redaction_engine.rule_manager.custom_terms_manager:
+                from python_redaction_system.storage.custom_terms import CustomTermsManager
+                from python_redaction_system.storage.database import DatabaseManager
+                
+                db_manager = DatabaseManager()
+                custom_terms_manager = CustomTermsManager(db_manager)
+                self.redaction_engine.rule_manager.custom_terms_manager = custom_terms_manager
+            
+            # Add each rule
+            for category, rules in rules_data.items():
+                for rule_name, pattern in rules.items():
+                    self.redaction_engine.rule_manager.add_custom_rule(category, rule_name, pattern)
+            
+            # Refresh the table
+            self.rules_model.refresh()
+            
+            # Refresh the category combo box
+            self._refresh_category_combo()
+            
+            # Update status
+            self.statusBar().showMessage(f"Rules imported from {file_path}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Error importing rules: {str(e)}")
+    
+    def _export_rules(self) -> None:
+        """Export custom rules to a JSON file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Rules", "", "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Get custom rules
+            if not self.redaction_engine.rule_manager.custom_terms_manager:
+                QMessageBox.information(self, "No Custom Rules", "There are no custom rules to export.")
+                return
+            
+            custom_terms = self.redaction_engine.rule_manager.custom_terms_manager.export_terms()
+            
+            # Export to JSON
+            import json
+            with open(file_path, 'w') as f:
+                json.dump(custom_terms, f, indent=4)
+            
+            # Update status
+            self.statusBar().showMessage(f"Rules exported to {file_path}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Error exporting rules: {str(e)}")
+    
+    def _create_settings_tab(self, tab_widget: QWidget) -> None:
+        """
+        Create the settings tab.
+        
+        Args:
+            tab_widget: The widget to add components to.
+        """
+        # This would be implemented with settings for the application
+        layout = QVBoxLayout(tab_widget)
+        layout.addWidget(QLabel("Settings management will be implemented here"))
+        
+        # This would include:
+        # - Export format settings
+        # - UI theme settings
+        # - Default paths
+        # - Log retention settings
+    
+    def _load_settings(self) -> None:
+        """Load application settings."""
+        # Would load settings from the settings manager
+        pass
+    
+    def _redact_text(self) -> None:
+        """Redact the input text and display the result."""
+        input_text = self.text_input.toPlainText()
+        if not input_text:
+            QMessageBox.warning(self, "Warning", "No text to redact.")
+            return
+        
+        # Get selected categories
+        selected_categories = [
+            category for category, checkbox in self.category_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+        
+        if not selected_categories:
+            QMessageBox.warning(self, "Warning", "No categories selected for redaction.")
+            return
+        
+        # Perform redaction
+        try:
+            redacted_text, stats = self.redaction_engine.redact_text(input_text, selected_categories)
+            self.text_output.setPlainText(redacted_text)
+            
+            # Show stats in status bar
+            total_redactions = sum(stats.values())
+            self.statusBar().showMessage(f"Redaction complete: {total_redactions} items redacted.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error during redaction: {str(e)}")
+    
+    def _load_from_file(self) -> None:
+        """Load text from a file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Text File", "", "Text Files (*.txt);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    self.text_input.setPlainText(file.read())
+                self.statusBar().showMessage(f"Loaded text from {file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error loading file: {str(e)}")
+    
+    def _save_to_file(self) -> None:
+        """Save redacted text to a file."""
+        output_text = self.text_output.toPlainText()
+        if not output_text:
+            QMessageBox.warning(self, "Warning", "No redacted text to save.")
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Redacted Text", "", "Text Files (*.txt);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    file.write(output_text)
+                self.statusBar().showMessage(f"Saved redacted text to {file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error saving file: {str(e)}")
