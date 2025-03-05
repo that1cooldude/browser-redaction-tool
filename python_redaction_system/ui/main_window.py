@@ -1,18 +1,106 @@
 """
-Main window for the PyQt6-based redaction system UI.
+Main window for the cross-platform Qt-based redaction system UI.
 """
 
 from typing import Dict, List, Optional, Tuple, Any
 import re
+import platform
+import sys
 
-from PyQt6.QtCore import Qt, pyqtSlot, QSortFilterProxyModel
-from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
-    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
-    QScrollArea, QFormLayout, QSlider, QLineEdit
-)
+# Import UI factory for cross-platform compatibility
+class UIFactory:
+    """Factory class to provide the appropriate UI toolkit based on platform."""
+    
+    @staticmethod
+    def get_ui_toolkit():
+        """
+        Get the UI toolkit name being used.
+        Returns:
+            str: Name of the UI toolkit ("PyQt6", "PySide6", "PyQt5", or "PySide2")
+        """
+        return getattr(sys.modules.get('__main__'), 'UI_TOOLKIT', None) or UIFactory._detect_toolkit()
+    
+    @staticmethod
+    def _detect_toolkit():
+        """
+        Detects which UI toolkit is available.
+        Tries imports in the order: PyQt6, PySide6, PyQt5, PySide2
+        Returns:
+            str: Name of the first available toolkit
+        """
+        system = platform.system()
+        
+        # Different default priority based on platform
+        if system == "Windows":
+            toolkits = ["PySide6", "PyQt6", "PySide2", "PyQt5"]
+        else:  # macOS and Linux
+            toolkits = ["PyQt6", "PySide6", "PyQt5", "PySide2"]
+        
+        for toolkit in toolkits:
+            try:
+                if toolkit == "PyQt6":
+                    import PyQt6
+                    return "PyQt6"
+                elif toolkit == "PySide6":
+                    import PySide6
+                    return "PySide6"
+                elif toolkit == "PyQt5":
+                    import PyQt5
+                    return "PyQt5"
+                elif toolkit == "PySide2":
+                    import PySide2
+                    return "PySide2"
+            except ImportError:
+                continue
+        
+        raise ImportError("No Qt toolkit found. Please install PyQt6, PySide6, PyQt5, or PySide2.")
+
+# Get the UI toolkit based on platform or what's available
+UI_TOOLKIT = UIFactory.get_ui_toolkit()
+
+# Import from the appropriate UI toolkit
+if UI_TOOLKIT == "PyQt6":
+    from PyQt6.QtCore import Qt, pyqtSlot as Slot, QSortFilterProxyModel
+    from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+    from PyQt6.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+        QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+        QScrollArea, QFormLayout, QSlider, QLineEdit
+    )
+    SignalType = pyqtSlot
+elif UI_TOOLKIT == "PySide6":
+    from PySide6.QtCore import Qt, Slot, QSortFilterProxyModel
+    from PySide6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+    from PySide6.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+        QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+        QScrollArea, QFormLayout, QSlider, QLineEdit
+    )
+    SignalType = Slot
+elif UI_TOOLKIT == "PyQt5":
+    from PyQt5.QtCore import Qt, pyqtSlot as Slot, QSortFilterProxyModel
+    from PyQt5.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+    from PyQt5.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+        QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+        QScrollArea, QFormLayout, QSlider, QLineEdit
+    )
+    SignalType = pyqtSlot
+elif UI_TOOLKIT == "PySide2":
+    from PySide2.QtCore import Qt, Slot, QSortFilterProxyModel
+    from PySide2.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+    from PySide2.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+        QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+        QScrollArea, QFormLayout, QSlider, QLineEdit
+    )
+    SignalType = Slot
+else:
+    raise ImportError("No supported Qt toolkit found")
 
 from core.redaction_engine import RedactionEngine
 from storage.custom_terms import CustomTermsManager
@@ -293,12 +381,27 @@ class MainWindow(QMainWindow):
         Args:
             tab_widget: The widget to add components to.
         """
-        from PyQt6.QtCore import QSortFilterProxyModel, QAbstractTableModel, Qt, QModelIndex
-        from PyQt6.QtGui import QFont
-        from PyQt6.QtWidgets import (QTableView, QHeaderView, QSplitter, QFormLayout, 
-                                    QComboBox, QLineEdit, QGroupBox, QRadioButton,
-                                    QButtonGroup, QPushButton, QFileDialog, QMessageBox,
-                                    QInputDialog, QScrollArea)
+        # Use the previously imported UI toolkit for consistency
+        if UI_TOOLKIT == "PyQt6":
+            from PyQt6.QtCore import QAbstractTableModel, QModelIndex
+            from PyQt6.QtGui import QFont
+            from PyQt6.QtWidgets import (QTableView, QHeaderView, QInputDialog,
+                                       QButtonGroup, QRadioButton)
+        elif UI_TOOLKIT == "PySide6":
+            from PySide6.QtCore import QAbstractTableModel, QModelIndex
+            from PySide6.QtGui import QFont
+            from PySide6.QtWidgets import (QTableView, QHeaderView, QInputDialog,
+                                         QButtonGroup, QRadioButton)
+        elif UI_TOOLKIT == "PyQt5":
+            from PyQt5.QtCore import QAbstractTableModel, QModelIndex
+            from PyQt5.QtGui import QFont
+            from PyQt5.QtWidgets import (QTableView, QHeaderView, QInputDialog,
+                                       QButtonGroup, QRadioButton)
+        elif UI_TOOLKIT == "PySide2":
+            from PySide2.QtCore import QAbstractTableModel, QModelIndex
+            from PySide2.QtGui import QFont
+            from PySide2.QtWidgets import (QTableView, QHeaderView, QInputDialog,
+                                         QButtonGroup, QRadioButton)
         
         layout = QVBoxLayout(tab_widget)
         

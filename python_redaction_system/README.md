@@ -301,25 +301,37 @@ Optional NLP dependencies:
 ### Running the Application
 
 ```bash
-python main.py
+python python_redaction_system/main.py
 ```
 
 ## Platform Compatibility
 
-The application is designed to work across all major platforms:
+The application is designed to work across all major platforms using an abstraction layer that automatically selects the appropriate UI toolkit for each platform:
 
 ### Windows
+- Uses PySide6 by default (install with `pip install PySide6==6.5.3`)
+- If you encounter a "module not found" error, you need to uncomment and install PySide6 in requirements.txt
 - Application data stored in `%APPDATA%\TextRedactionSystem\`
 - High-DPI support enabled by default
 - All file paths use Windows-style separators automatically
 
 ### macOS
+- Uses PyQt6 by default (install with `pip install PyQt6==6.5.3`)
 - Application data stored in `~/Library/Application Support/TextRedactionSystem/`
 - Native look and feel with macOS-specific UI enhancements
 
 ### Linux
+- Uses PyQt6 by default (install with `pip install PyQt6==6.5.3`)
 - Application data stored in `~/.local/share/TextRedactionSystem/`
 - Adapts to various desktop environments
+
+### UI Toolkit Fallbacks
+The application will automatically try to use the following UI toolkits, in platform-specific order:
+1. Primary toolkit for the platform (PySide6 for Windows, PyQt6 for macOS/Linux)
+2. Alternative modern toolkit (PyQt6 for Windows, PySide6 for macOS/Linux)
+3. Older fallback toolkits (PyQt5, PySide2)
+
+Install the appropriate UI toolkit for your platform as noted in the requirements.txt file.
 
 ## Customization Options
 
