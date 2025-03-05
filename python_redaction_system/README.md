@@ -312,14 +312,34 @@ The application is designed to work across all major platforms:
 - Application data stored in `%APPDATA%\TextRedactionSystem\`
 - High-DPI support enabled by default
 - All file paths use Windows-style separators automatically
+- Uses PySide6 as the primary UI toolkit for optimal performance and compatibility
 
 ### macOS
 - Application data stored in `~/Library/Application Support/TextRedactionSystem/`
 - Native look and feel with macOS-specific UI enhancements
+- Uses PyQt6 as the primary UI toolkit for optimal macOS integration
 
 ### Linux
 - Application data stored in `~/.local/share/TextRedactionSystem/`
 - Adapts to various desktop environments
+- Uses PyQt6 as the primary UI toolkit for consistent Linux experience
+
+### Dynamic UI Toolkit Selection
+- Automatically detects and selects the appropriate UI toolkit based on the platform
+- Primary toolkit preferences:
+  - PyQt6 for macOS and Linux platforms
+  - PySide6 for Windows platforms
+- Gracefully falls back to alternative toolkits if primary is unavailable:
+  - PyQt5 as fallback for PyQt6
+  - PySide2 as fallback for PySide6
+- Implements a UI factory pattern for seamless toolkit abstraction
+- All UI components are accessed through a unified API regardless of underlying toolkit
+
+### Platform-Specific Dependencies
+- Platform-aware requirements.txt file with conditional dependencies
+- Automatically installs the appropriate UI toolkit based on detected OS
+- Reduces unnecessary dependencies and package conflicts
+- Ensures optimal performance for each platform's unique environment
 
 ## Customization Options
 

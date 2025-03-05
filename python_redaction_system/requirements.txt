@@ -1,8 +1,15 @@
 # Core dependencies
-PyQt6==6.5.3
 regex==2023.10.3
 cryptography==41.0.5
 pyyaml==6.0.1
+
+# UI toolkit options (install at least one)
+PyQt6==6.5.3; platform_system != "Windows"  # Primary UI toolkit for macOS/Linux
+# Alternative UI toolkits for Windows compatibility
+PySide6>=6.5.0; platform_system == "Windows"  # Qt for Python (official Qt bindings)
+# Fallback options if needed
+# PyQt5>=5.15.0
+# PySide2>=5.15.0
 
 # Document processing dependencies
 python-docx==1.1.0
@@ -12,6 +19,9 @@ python-pptx==1.0.1
 beautifulsoup4==4.12.2
 lxml==4.9.3
 pytesseract==0.3.10  # Requires tesseract-ocr to be installed on the system
+Pillow==10.1.0  # Required for image processing
+numpy==1.26.2  # Required for image enhancement
+chardet==5.2.0  # Helps with text encoding detection
 
 # Optional NLP dependencies
 # spacy==3.7.4

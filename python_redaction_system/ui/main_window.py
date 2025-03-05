@@ -1,18 +1,131 @@
 """
-Main window for the PyQt6-based redaction system UI.
+Main window for the redaction system UI.
+
+The application uses a UI factory approach to handle differences between 
+macOS and Windows environments, allowing for fallbacks when specific
+widgets or features aren't available on a platform.
 """
 
+import os
+import sys
+import platform
 from typing import Dict, List, Optional, Tuple, Any
 import re
 
-from PyQt6.QtCore import Qt, pyqtSlot, QSortFilterProxyModel
-from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
-    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
-    QScrollArea, QFormLayout, QSlider, QLineEdit
-)
+# Create a UI factory to handle platform differences
+class UIFactory:
+    """Factory class to create appropriate UI components based on platform."""
+    
+    @staticmethod
+    def get_toolkit():
+        """Get the UI toolkit based on platform and availability."""
+        # Use environment variable if set by main.py
+        if os.environ.get("REDACTION_UI_TOOLKIT"):
+            return os.environ.get("REDACTION_UI_TOOLKIT")
+            
+        # Default to PyQt6 if not specified
+        return "PyQt6"
+    
+    @staticmethod
+    def import_qt_modules():
+        """Import the appropriate Qt modules based on the selected toolkit."""
+        global Qt, QSortFilterProxyModel, QPalette, QColor, QTextCharFormat, QTextCursor
+        global QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout
+        global QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter
+        global QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar
+        global QScrollArea, QFormLayout, QSlider, QLineEdit, QProgressDialog, QInputDialog
+        global Slot  # For signal/slot connection
+        
+        toolkit = UIFactory.get_toolkit()
+        
+        if toolkit == "PyQt6":
+            try:
+                from PyQt6.QtCore import Qt, pyqtSlot as Slot, QSortFilterProxyModel
+                from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+                from PyQt6.QtWidgets import (
+                    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+                    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+                    QScrollArea, QFormLayout, QSlider, QLineEdit, QProgressDialog,
+                    QInputDialog
+                )
+                print("Using PyQt6 toolkit")
+                return True
+            except ImportError:
+                print("PyQt6 not available, falling back...")
+                
+        if toolkit == "PySide6":
+            try:
+                from PySide6.QtCore import Qt, Slot, QSortFilterProxyModel
+                from PySide6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+                from PySide6.QtWidgets import (
+                    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+                    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+                    QScrollArea, QFormLayout, QSlider, QLineEdit, QProgressDialog,
+                    QInputDialog
+                )
+                print("Using PySide6 toolkit")
+                return True
+            except ImportError:
+                print("PySide6 not available, falling back...")
+
+        if toolkit == "PyQt5":
+            try:
+                from PyQt5.QtCore import Qt, pyqtSlot as Slot, QSortFilterProxyModel
+                from PyQt5.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+                from PyQt5.QtWidgets import (
+                    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+                    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+                    QScrollArea, QFormLayout, QSlider, QLineEdit, QProgressDialog,
+                    QInputDialog
+                )
+                print("Using PyQt5 toolkit")
+                return True
+            except ImportError:
+                print("PyQt5 not available, falling back...")
+                
+        if toolkit == "PySide2":
+            try:
+                from PySide2.QtCore import Qt, Slot, QSortFilterProxyModel
+                from PySide2.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
+                from PySide2.QtWidgets import (
+                    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                    QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
+                    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+                    QScrollArea, QFormLayout, QSlider, QLineEdit, QProgressDialog,
+                    QInputDialog
+                )
+                print("Using PySide2 toolkit")
+                return True
+            except ImportError:
+                print("PySide2 not available, falling back...")
+        
+        # If we reach here, no toolkit was successfully imported
+        return False
+    
+    @staticmethod
+    def get_platform_specific_widgets():
+        """Get platform-specific widget implementations or alternatives."""
+        # This method can be expanded to provide platform-specific widget alternatives
+        # when a specific widget doesn't work properly on a particular platform
+        platform_system = platform.system()
+        
+        if platform_system == "Windows":
+            # Windows-specific widget alternatives can be defined here
+            pass
+        elif platform_system == "Darwin":  # macOS
+            # macOS-specific widget alternatives can be defined here
+            pass
+        
+        # Return an empty dict if no specifics are needed
+        return {}
+
+# Import the appropriate UI modules
+if not UIFactory.import_qt_modules():
+    print("Error: No UI toolkit could be imported. The application cannot start.")
+    sys.exit(1)
 
 from core.redaction_engine import RedactionEngine
 from storage.custom_terms import CustomTermsManager
@@ -39,14 +152,12 @@ class MainWindow(QMainWindow):
         self.redaction_engine = redaction_engine or RedactionEngine()
         self.settings_manager = settings_manager or SettingsManager()
         
-        # Remove preview timer initialization
-        
         # Statistics for redactions
         self.redaction_stats = {}
         
         # Set up UI
         self.setWindowTitle("Text Redaction System")
-        self.resize(1000, 800)
+        self.resize(1000, 800)  # Set a default window size
         self._create_ui()
         self._load_settings()
     
@@ -103,7 +214,6 @@ class MainWindow(QMainWindow):
         
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Enter or paste text to redact...")
-        # Remove the real-time preview connection
         input_layout.addWidget(self.text_input)
         
         # Button row
@@ -116,8 +226,6 @@ class MainWindow(QMainWindow):
         self.clear_input_button = QPushButton("Clear Input")
         self.clear_input_button.clicked.connect(self._clear_input)
         button_layout.addWidget(self.clear_input_button)
-        
-        # Remove the real-time preview checkbox completely
         
         # Split view toggle
         self.split_view_checkbox = QCheckBox("Split View")
@@ -161,7 +269,6 @@ class MainWindow(QMainWindow):
         for category in categories:
             checkbox = QCheckBox(category)
             checkbox.setChecked(True)
-            # Remove preview connection from checkboxes
             checkbox_layout.addWidget(checkbox)
             self.category_checkboxes[category] = checkbox
             
@@ -258,7 +365,6 @@ class MainWindow(QMainWindow):
         # Highlight option for output
         self.highlight_checkbox = QCheckBox("Highlight Redactions")
         self.highlight_checkbox.setChecked(True)
-        # Remove preview connection
         output_button_layout.addWidget(self.highlight_checkbox)
         
         output_layout.addLayout(output_button_layout)
@@ -974,102 +1080,6 @@ class MainWindow(QMainWindow):
             # Show confirmation
             self.statusBar().showMessage("Settings reset to defaults")
     
-    # Remove the _schedule_preview method completely
-    
-    def _update_preview(self) -> None:
-        """Update the preview with current redaction settings."""
-        input_text = self.text_input.toPlainText()
-        if not input_text:
-            self.text_output.clear()
-            if self.split_view_checkbox.isChecked():
-                self.original_view.clear()
-            self.stats_group.setVisible(False)
-            return
-        
-        # Get selected categories
-        selected_categories = [
-            category for category, checkbox in self.category_checkboxes.items()
-            if checkbox.isChecked()
-        ]
-        
-        if not selected_categories:
-            self.text_output.setPlainText("No categories selected for redaction.")
-            return
-        
-        # Perform redaction
-        try:
-            # Update the original view if split mode is enabled
-            if self.split_view_checkbox.isChecked():
-                self.original_view.setPlainText(input_text)
-            
-            # Check if NLP should be used
-            use_nlp = self.use_nlp_checkbox.isChecked() and self.redaction_engine.use_nlp
-            
-            try:
-                # Perform the redaction
-                redacted_text, stats = self.redaction_engine.redact_text(
-                    input_text, selected_categories, use_nlp=use_nlp
-                )
-            except Exception as e:
-                # Fallback to rule-based redaction if NLP fails
-                if use_nlp:
-                    self.statusBar().showMessage(f"NLP redaction failed, falling back to rules: {str(e)}")
-                    use_nlp = False
-                    redacted_text, stats = self.redaction_engine.redact_text(
-                        input_text, selected_categories, use_nlp=False
-                    )
-                else:
-                    # If not using NLP and still failing, re-raise
-                    raise
-            
-            # Store stats for displaying
-            self.redaction_stats = stats
-            
-            # Apply highlighting if enabled
-            if self.highlight_checkbox.isChecked():
-                # Use HTML with colored redaction markers
-                colored_text = redacted_text
-                
-                # Define colors for different categories
-                category_colors = {
-                    "PII": "#ff5555",       # Red
-                    "PHI": "#5555ff",       # Blue
-                    "FINANCIAL": "#55aa55", # Green
-                    "CREDENTIALS": "#aa55aa", # Purple
-                    "LOCATIONS": "#aaaa55"  # Yellow
-                }
-                
-                # Replace redaction markers with colored spans
-                for category in selected_categories:
-                    color = category_colors.get(category, "#aaaaaa")  # Default to gray
-                    # Pattern to match category markers like [PII:SSN]
-                    pattern = f'\\[{category}:[^\\]]+\\]'
-                    
-                    # Replace with colored versions
-                    colored_matches = []
-                    for match in re.finditer(pattern, colored_text):
-                        marker = match.group(0)
-                        # Replace with HTML
-                        colored_match = f'<span style="background-color: {color}; color: white;">{marker}</span>'
-                        colored_matches.append((marker, colored_match))
-                    
-                    # Apply replacements from longest to shortest to avoid issues
-                    colored_matches.sort(key=lambda x: len(x[0]), reverse=True)
-                    for original, colored in colored_matches:
-                        colored_text = colored_text.replace(original, colored)
-                
-                # Display with HTML formatting
-                self.text_output.setHtml(colored_text)
-            else:
-                # Just use plain text
-                self.text_output.setPlainText(redacted_text)
-            
-            # Update statistics display
-            self._update_statistics(stats)
-            
-        except Exception as e:
-            self.text_output.setPlainText(f"Error during preview: {str(e)}")
-    
     def _update_statistics(self, stats: Dict[str, int]) -> None:
         """Update the statistics display with redaction counts."""
         if not stats:
@@ -1160,8 +1170,6 @@ class MainWindow(QMainWindow):
             if category in self.stats_count_labels:
                 count_label = self.stats_count_labels[category]
                 count_label.setText(str(count))
-    
-    # Remove the _handle_sensitivity_change method
     
     def _toggle_split_view(self, state: int) -> None:
         """Toggle between normal and split view modes."""
@@ -1287,11 +1295,34 @@ class MainWindow(QMainWindow):
         
         if file_path:
             try:
+                # Get file size for progress calculation
+                file_size = os.path.getsize(file_path)
+                max_size = self.settings_manager.get('max_file_size_mb', 10) * 1024 * 1024
+                
+                # Check file size limit
+                if file_size > max_size:
+                    QMessageBox.warning(
+                        self, 
+                        "File Too Large",
+                        f"File size ({file_size/1024/1024:.1f}MB) exceeds maximum allowed size "
+                        f"({max_size/1024/1024:.1f}MB). Please try a smaller file."
+                    )
+                    return
+                
                 # Show a progress dialog for large files
-                progress = QProgressDialog("Extracting text from document...", "Cancel", 0, 100, self)
+                progress = QProgressDialog("Preparing to load document...", "Cancel", 0, 100, self)
                 progress.setWindowTitle("Loading Document")
                 progress.setWindowModality(Qt.WindowModality.WindowModal)
-                progress.setValue(10)
+                
+                # Function to update progress with message
+                def update_progress(value: int, message: str) -> None:
+                    if progress.wasCanceled():
+                        raise Exception("Operation cancelled by user")
+                    progress.setLabelText(message)
+                    progress.setValue(value)
+                    QApplication.processEvents()
+                
+                update_progress(10, "Initializing document processor...")
                 
                 # Import document processor here to avoid circular imports
                 from core.document_processor import DocumentProcessor
@@ -1299,46 +1330,110 @@ class MainWindow(QMainWindow):
                 # Get appropriate processor for file type
                 processor = DocumentProcessor.get_processor_for_file(file_path)
                 
-                progress.setValue(30)
+                update_progress(20, "Analyzing document format...")
                 
-                # Extract text content
-                extracted_text = processor.extract_text(file_path)
+                # Get file extension and update progress message
+                _, ext = os.path.splitext(file_path)
+                ext = ext.lower()
+                format_messages = {
+                    '.pdf': "Extracting text from PDF...",
+                    '.docx': "Processing Word document...",
+                    '.doc': "Processing Word document...",
+                    '.xlsx': "Processing Excel spreadsheet...",
+                    '.xls': "Processing Excel spreadsheet...",
+                    '.pptx': "Processing PowerPoint presentation...",
+                    '.html': "Processing HTML content...",
+                    '.htm': "Processing HTML content...",
+                    '.jpg': "Performing OCR on image...",
+                    '.jpeg': "Performing OCR on image...",
+                    '.png': "Performing OCR on image...",
+                    '.bmp': "Performing OCR on image...",
+                    '.tiff': "Performing OCR on image...",
+                    '.gif': "Performing OCR on image..."
+                }
                 
-                progress.setValue(70)
+                update_progress(30, format_messages.get(ext, "Extracting text..."))
                 
-                # Get metadata
-                metadata = processor.get_metadata(file_path)
-                
-                progress.setValue(90)
-                
-                # Set text in the input field
-                self.text_input.setPlainText(extracted_text)
-                
-                # Display some metadata in status bar
-                if 'filename' in metadata:
-                    self.statusBar().showMessage(f"Loaded {metadata.get('filename')}")
+                try:
+                    # Extract text content
+                    extracted_text = processor.extract_text(file_path)
                     
-                    # If additional metadata is available, show a richer message
+                    # Check if extraction was successful
+                    if not extracted_text or extracted_text.startswith("[") and extracted_text.endswith("]"):
+                        # This might be an error message from the processor
+                        if "ERROR:" in extracted_text or "FAILED:" in extracted_text:
+                            raise Exception(extracted_text.strip("[]"))
+                            
+                        # If it's empty or just contains a marker, show warning
+                        QMessageBox.warning(
+                            self,
+                            "No Text Found",
+                            "No readable text content could be extracted from this file."
+                        )
+                        return
+                    
+                    update_progress(70, "Getting document metadata...")
+                    
+                    # Get metadata
+                    metadata = processor.get_metadata(file_path)
+                    
+                    update_progress(90, "Updating interface...")
+                    
+                    # Set text in the input field
+                    self.text_input.setPlainText(extracted_text)
+                    
+                    # Build status message with metadata
+                    status_parts = []
+                    status_parts.append(f"Loaded {metadata.get('filename', os.path.basename(file_path))}")
+                    
                     if 'pages' in metadata:
-                        self.statusBar().showMessage(f"Loaded {metadata.get('filename')} ({metadata.get('pages')} pages)")
+                        status_parts.append(f"{metadata['pages']} pages")
                     elif 'slide_count' in metadata:
-                        self.statusBar().showMessage(f"Loaded {metadata.get('filename')} ({metadata.get('slide_count')} slides)")
+                        status_parts.append(f"{metadata['slide_count']} slides")
                     elif 'sheet_count' in metadata:
-                        self.statusBar().showMessage(f"Loaded {metadata.get('filename')} ({metadata.get('sheet_count')} sheets)")
-                else:
-                    self.statusBar().showMessage(f"Loaded document from {file_path}")
+                        status_parts.append(f"{metadata['sheet_count']} sheets")
+                        
+                    if 'size' in metadata:
+                        status_parts.append(f"{metadata['size']/1024:.1f}KB")
+                        
+                    # Additional format-specific metadata
+                    if ext in ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.gif'):
+                        if 'width' in metadata and 'height' in metadata:
+                            status_parts.append(f"{metadata['width']}x{metadata['height']}")
+                    
+                    status_message = " - ".join(status_parts)
+                    self.statusBar().showMessage(status_message)
+                    
+                except Exception as e:
+                    # Handle specific processor errors
+                    error_msg = str(e)
+                    if "ImportError" in error_msg or "not installed" in error_msg.lower():
+                        QMessageBox.warning(
+                            self, 
+                            "Missing Dependency",
+                            f"Could not process this file type because a required dependency "
+                            f"is missing:\n\n{error_msg}\n\nPlease check requirements.txt "
+                            f"for the necessary packages."
+                        )
+                    else:
+                        QMessageBox.critical(
+                            self, 
+                            "Processing Error",
+                            f"Error processing file:\n\n{error_msg}"
+                        )
+                    return
                 
-                progress.setValue(100)
+                update_progress(100, "Done!")
                 
-            except ImportError as e:
-                # Handle missing optional dependencies
-                QMessageBox.warning(
-                    self, "Missing Dependency", 
-                    f"Could not process this file type because a required dependency is missing: {str(e)}\n\n"
-                    f"Please check requirements.txt for the necessary packages."
-                )
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Error loading file: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    "Error",
+                    f"Error loading file:\n\n{str(e)}"
+                )
+            finally:
+                if 'progress' in locals():
+                    progress.close()
     
     def _save_to_file(self) -> None:
         """Save redacted text to a file."""
