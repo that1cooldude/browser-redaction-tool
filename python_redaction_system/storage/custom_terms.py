@@ -4,7 +4,7 @@ Management of custom redaction terms.
 
 from typing import Dict, List, Optional
 
-from python_redaction_system.storage.database import DatabaseManager
+from storage.database import DatabaseManager
 
 
 class CustomTermsManager:

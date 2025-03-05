@@ -6,16 +6,64 @@ import sys
 import os
 import platform
 import traceback
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+# Platform-specific UI toolkit selection
+system = platform.system()
+UI_TOOLKIT = None  # This will be exported to other modules
 
-from python_redaction_system.core.redaction_engine import RedactionEngine
-from python_redaction_system.core.rule_manager import RuleManager
-from python_redaction_system.storage.custom_terms import CustomTermsManager
-from python_redaction_system.storage.database import DatabaseManager
-from python_redaction_system.config.settings import SettingsManager
-from python_redaction_system.ui.main_window import MainWindow
+# First attempt PySide6 for Windows, PyQt6 for others
+if system == "Windows":
+    try:
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from PySide6.QtCore import Qt
+        UI_TOOLKIT = "PySide6"
+    except ImportError:
+        pass
+else:  # macOS and Linux prefer PyQt6
+    try:
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        UI_TOOLKIT = "PyQt6"
+    except ImportError:
+        pass
+
+# Fallbacks if preferred toolkit is unavailable
+if UI_TOOLKIT is None:
+    try:
+        # Try PyQt6 as first fallback
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from PyQt6.QtCore import Qt
+        UI_TOOLKIT = "PyQt6"
+    except ImportError:
+        try:
+            # Try PySide6 as second fallback
+            from PySide6.QtWidgets import QApplication, QMessageBox
+            from PySide6.QtCore import Qt
+            UI_TOOLKIT = "PySide6"
+        except ImportError:
+            try:
+                # Try PyQt5 as third fallback
+                from PyQt5.QtWidgets import QApplication, QMessageBox
+                from PyQt5.QtCore import Qt
+                UI_TOOLKIT = "PyQt5"
+            except ImportError:
+                try:
+                    # Try PySide2 as final fallback
+                    from PySide2.QtWidgets import QApplication, QMessageBox
+                    from PySide2.QtCore import Qt
+                    UI_TOOLKIT = "PySide2"
+                except ImportError:
+                    print("Error: No Qt toolkit found. Please install PyQt6, PySide6, PyQt5, or PySide2.")
+                    sys.exit(1)
+
+# Fix imports to use local modules
+from core.redaction_engine import RedactionEngine
+from core.rule_manager import RuleManager
+from storage.custom_terms import CustomTermsManager
+from storage.database import DatabaseManager
+from config.settings import SettingsManager
+from ui.main_window import MainWindow
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
