@@ -105,15 +105,15 @@ class RuleManager:
     
     def get_rules_for_category(self, category: str) -> Dict[str, str]:
         """
-        Get all rules for a specific category.
+        Get all redaction rules for a specific category.
         
         Args:
-            category: The category name.
-        
+            category: The category to get rules for
+            
         Returns:
-            A dictionary mapping rule names to regex patterns.
+            Dictionary of rule names and patterns
         """
-        # Start with preset rules
+        # Get preset rules
         rules = {}
         if category in self._preset_rules:
             rules.update(self._preset_rules[category])
@@ -125,18 +125,35 @@ class RuleManager:
                 rules.update(custom_rules)
         
         return rules
+        
+    def get_rules_for_categories(self, categories: List[str]) -> Dict[str, Dict[str, str]]:
+        """
+        Get all redaction rules for a list of categories.
+        
+        Args:
+            categories: List of categories to get rules for
+            
+        Returns:
+            Dictionary of categories mapping to rule dictionaries
+        """
+        result = {}
+        for category in categories:
+            category_rules = self.get_rules_for_category(category)
+            if category_rules:
+                result[category] = category_rules
+        return result
     
     def add_custom_rule(self, category: str, rule_name: str, pattern: str) -> None:
         """
-        Add a custom rule to the manager.
+        Add a custom redaction rule.
         
         Args:
-            category: The category name.
-            rule_name: The rule name.
-            pattern: The regex pattern for the rule.
-        
+            category: Category for the rule
+            rule_name: Name of the rule
+            pattern: Regex pattern for matching
+            
         Raises:
-            ValueError: If the custom terms manager is not available.
+            ValueError: If the rule is invalid or if rule_name already exists
         """
         if not self.custom_terms_manager:
             raise ValueError("Custom terms manager is not available")

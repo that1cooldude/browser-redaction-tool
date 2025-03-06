@@ -34,11 +34,11 @@ DEFAULT_SETTINGS = {
     "parallel_processing": True,  # Use multiple cores for redaction
 }
 
-# Default NLP settings
-NLP_SETTINGS = {
-    "spacy_model": "en_core_web_sm",
-    "use_ner": True,
-    "ner_confidence_threshold": 0.85,
+# Presidio and redaction engine settings
+REDACTION_SETTINGS = {
+    "use_presidio": True,
+    "confidence_threshold": 0.85,
+    "max_chunk_size": 100000,  # Maximum text chunk size for processing
 }
 
 # Security-related constants

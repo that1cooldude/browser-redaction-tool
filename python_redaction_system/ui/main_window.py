@@ -5,16 +5,21 @@ Main window for the PySide6-based redaction system UI.
 from typing import Dict, List, Optional, Tuple, Any
 import re
 import platform
+import sys
+import logging
+import traceback
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor, QFont
+from PySide6.QtCore import Qt, Slot, QTimer
+from PySide6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
-    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar
+    QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar,
+    QTableWidget, QTableWidgetItem, QHeaderView
 )
 
-from python_redaction_system.core.redaction_engine import RedactionEngine
+from python_redaction_system.core.redaction_engine import RedactionEngine, RedactionMethod
+from python_redaction_system.core.rule_manager import RuleManager
 from python_redaction_system.storage.custom_terms import CustomTermsManager
 from python_redaction_system.config.settings import SettingsManager
 
@@ -38,8 +43,6 @@ class MainWindow(QMainWindow):
         # Initialize components
         self.redaction_engine = redaction_engine or RedactionEngine()
         self.settings_manager = settings_manager or SettingsManager()
-        
-        # Remove preview timer initialization
         
         # Statistics for redactions
         self.redaction_stats = {}
@@ -72,29 +75,36 @@ class MainWindow(QMainWindow):
         self.move(x, y)
     
     def _create_ui(self) -> None:
-        """Create the main UI layout and components."""
-        # Central widget and main layout
+        """Create the main UI components."""
+        # Central widget
         central_widget = QWidget()
-        main_layout = QVBoxLayout(central_widget)
-        
-        # Create tab widget for different sections
-        tab_widget = QTabWidget()
-        main_layout.addWidget(tab_widget)
-        
-        # Tab 1: Text Redaction
-        redaction_tab = QWidget()
-        tab_widget.addTab(redaction_tab, "Text Redaction")
-        self._create_redaction_tab(redaction_tab)
-        
-        # Tab 2: Rule Management
-        rule_tab = QWidget()
-        tab_widget.addTab(rule_tab, "Rule Management")
-        self._create_rule_management_tab(rule_tab)
-        
-        # Status bar
-        self.statusBar().showMessage("Ready")
-        
         self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
+        
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        layout.addWidget(self.tab_widget)
+        
+        # Create tabs
+        redaction_tab = QWidget()
+        rule_management_tab = QWidget()
+        statistics_tab = QWidget()
+        
+        self._create_redaction_tab(redaction_tab)
+        self._create_rule_management_tab(rule_management_tab)
+        self._create_statistics_tab(statistics_tab)
+        
+        # Add tabs to tab widget
+        self.tab_widget.addTab(redaction_tab, "Redaction")
+        self.tab_widget.addTab(rule_management_tab, "Rule Management")
+        self.tab_widget.addTab(statistics_tab, "Statistics")
+        
+        # Add status bar
+        self.status_label = QLabel("Ready")
+        self.statusBar().addPermanentWidget(self.status_label)
+        
+        # Load settings
+        self._load_settings()
     
     def _create_redaction_tab(self, tab_widget: QWidget) -> None:
         """
@@ -112,6 +122,7 @@ class MainWindow(QMainWindow):
         # Top part - input and controls
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(0, 0, 0, 0)
         
         # Input section
         input_group = QGroupBox("Input Text")
@@ -119,101 +130,105 @@ class MainWindow(QMainWindow):
         
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Enter or paste text to redact...")
-        # Remove the real-time preview connection
         input_layout.addWidget(self.text_input)
         
         # Button row
         button_layout = QHBoxLayout()
         
+        # Load file button
         self.load_file_button = QPushButton("Load from File")
+        self.load_file_button.setIcon(QIcon.fromTheme("document-open"))
         self.load_file_button.clicked.connect(self._load_from_file)
         button_layout.addWidget(self.load_file_button)
         
+        # Clear input button
         self.clear_input_button = QPushButton("Clear Input")
+        self.clear_input_button.setIcon(QIcon.fromTheme("edit-clear"))
         self.clear_input_button.clicked.connect(self._clear_input)
         button_layout.addWidget(self.clear_input_button)
         
-        # Remove the real-time preview checkbox completely
-        
-        # Split view toggle
+        # Split view checkbox
         self.split_view_checkbox = QCheckBox("Split View")
         self.split_view_checkbox.setChecked(False)
         self.split_view_checkbox.stateChanged.connect(self._toggle_split_view)
         button_layout.addWidget(self.split_view_checkbox)
         
+        # Auto-show stats checkbox
+        self.auto_show_stats_checkbox = QCheckBox("Auto-show Statistics")
+        self.auto_show_stats_checkbox.setChecked(True)
+        self.auto_show_stats_checkbox.setToolTip("Automatically switch to Statistics tab after redaction")
+        button_layout.addWidget(self.auto_show_stats_checkbox)
+        
+        # Add stretch to push buttons to the left
+        button_layout.addStretch()
+        
         input_layout.addLayout(button_layout)
         top_layout.addWidget(input_group)
         
-        # Control section
+        # Redaction controls
         control_group = QGroupBox("Redaction Controls")
-        control_layout = QHBoxLayout(control_group)
+        control_layout = QVBoxLayout(control_group)
         
-        # Sensitivity selector
-        sensitivity_layout = QVBoxLayout()
-        sensitivity_layout.addWidget(QLabel("Sensitivity Level:"))
-        self.sensitivity_combo = QComboBox()
-        self.sensitivity_combo.addItems(["Low", "Medium", "High"])
-        self.sensitivity_combo.setCurrentText("Medium")
-        self.sensitivity_combo.currentTextChanged.connect(
-            lambda text: self.redaction_engine.set_sensitivity(text.lower())
-        )
-        sensitivity_layout.addWidget(self.sensitivity_combo)
-        control_layout.addLayout(sensitivity_layout)
+        # Categories section
+        category_layout = QHBoxLayout()
+        category_label = QLabel("Categories to Redact:")
+        category_label.setFixedWidth(120)
+        category_layout.addWidget(category_label)
         
-        # Category selection
-        category_layout = QVBoxLayout()
-        category_layout.addWidget(QLabel("Categories to Apply:"))
+        # Category checkboxes
         self.category_checkboxes = {}
-        category_widget = QWidget()
-        checkbox_layout = QVBoxLayout(category_widget)
+        category_checkbox_layout = QHBoxLayout()
         
-        # Categories will be loaded later
         for category in self.redaction_engine.rule_manager.get_all_categories():
             checkbox = QCheckBox(category)
-            checkbox.setChecked(True)
-            # Remove preview connection from checkboxes
-            checkbox_layout.addWidget(checkbox)
+            checkbox.setChecked(True)  # Default to checked
             self.category_checkboxes[category] = checkbox
+            category_checkbox_layout.addWidget(checkbox)
         
-        category_layout.addWidget(category_widget)
+        category_layout.addLayout(category_checkbox_layout)
         control_layout.addLayout(category_layout)
         
+        # Sensitivity level
+        sensitivity_layout = QHBoxLayout()
+        sensitivity_label = QLabel("Sensitivity Level:")
+        sensitivity_label.setFixedWidth(120)
+        sensitivity_layout.addWidget(sensitivity_label)
+        
+        self.sensitivity_combo = QComboBox()
+        self.sensitivity_combo.addItems(["Low", "Medium", "High"])
+        self.sensitivity_combo.setCurrentText("Medium")  # Default to medium
+        sensitivity_layout.addWidget(self.sensitivity_combo)
+        sensitivity_layout.addStretch()
+        
+        control_layout.addLayout(sensitivity_layout)
+        
+        # Redaction button row
+        redact_layout = QHBoxLayout()
+        
         # Redact button
-        redact_layout = QVBoxLayout()
-        redact_layout.addStretch()
         self.redact_button = QPushButton("Redact Text")
         self.redact_button.setMinimumHeight(50)
         self.redact_button.clicked.connect(self._redact_text)
         redact_layout.addWidget(self.redact_button)
         
-        # Add option to use NLP - only enable if NLP is available
-        self.use_nlp_checkbox = QCheckBox("Use NLP Detection")
+        # Add use ML/NLP option
+        self.use_nlp_checkbox = QCheckBox("Use Advanced Detection (NLP)")
         self.use_nlp_checkbox.setChecked(self.redaction_engine.use_nlp)
-        self.use_nlp_checkbox.setEnabled(self.redaction_engine.use_nlp)
         if not self.redaction_engine.use_nlp:
-            self.use_nlp_checkbox.setToolTip("NLP features are not available. Install spaCy to enable this feature.")
+            self.use_nlp_checkbox.setEnabled(False)
+            self.use_nlp_checkbox.setToolTip("Advanced detection is not available (Presidio not installed)")
+        else:
+            self.use_nlp_checkbox.setToolTip("Advanced detection uses Microsoft Presidio for PII identification")
         redact_layout.addWidget(self.use_nlp_checkbox)
         
         control_layout.addLayout(redact_layout)
         
         top_layout.addWidget(control_group)
         
-        # Statistics section (initially hidden, will be shown after redaction)
-        self.stats_group = QGroupBox("Redaction Statistics")
-        stats_layout = QVBoxLayout(self.stats_group)
+        # *** Statistics section has been moved to a dedicated tab ***
         
-        self.stats_label = QLabel("No redactions performed yet.")
-        stats_layout.addWidget(self.stats_label)
-        
-        # Progress bar for each category
-        self.stats_progress_bars = {}
-        self.stats_count_labels = {}
-        self.stats_category_layout = QVBoxLayout()
-        stats_layout.addLayout(self.stats_category_layout)
-        
-        top_layout.addWidget(self.stats_group)
-        
-        # Bottom part - split view for output
+        # Bottom part - output view
+        # Create a horizontal splitter for output
         self.output_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Output section
@@ -229,9 +244,7 @@ class MainWindow(QMainWindow):
         output_button_layout = QHBoxLayout()
         
         self.copy_output_button = QPushButton("Copy to Clipboard")
-        self.copy_output_button.clicked.connect(
-            lambda: QApplication.clipboard().setText(self.text_output.toPlainText())
-        )
+        self.copy_output_button.clicked.connect(self._copy_to_clipboard)
         output_button_layout.addWidget(self.copy_output_button)
         
         self.save_output_button = QPushButton("Save to File")
@@ -241,33 +254,20 @@ class MainWindow(QMainWindow):
         # Highlight option for output
         self.highlight_checkbox = QCheckBox("Highlight Redactions")
         self.highlight_checkbox.setChecked(True)
-        # Remove preview connection
+        self.highlight_checkbox.stateChanged.connect(self._update_highlighting)
         output_button_layout.addWidget(self.highlight_checkbox)
         
         output_layout.addLayout(output_button_layout)
         
-        # Original text view for split mode (initially not added to layout)
-        self.original_view_group = QGroupBox("Original Text")
-        original_view_layout = QVBoxLayout(self.original_view_group)
-        
-        self.original_view = QTextEdit()
-        self.original_view.setReadOnly(True)
-        self.original_view.setPlaceholderText("Original text will appear here in split view mode...")
-        original_view_layout.addWidget(self.original_view)
-        
-        # Add widgets to the output splitter
+        # Add output group to the splitter
         self.output_splitter.addWidget(output_group)
-        # Original view is not added initially
         
         # Add widgets to main splitter
         self.main_splitter.addWidget(top_widget)
         self.main_splitter.addWidget(self.output_splitter)
         
-        # Set initial splitter sizes
+        # Set the initial sizes to show both input and output
         self.main_splitter.setSizes([500, 500])
-        
-        # Initially hide the stats group
-        self.stats_group.setVisible(False)
     
     def _create_rule_management_tab(self, tab_widget: QWidget) -> None:
         """
@@ -494,8 +494,13 @@ class MainWindow(QMainWindow):
     
     def _refresh_category_combo(self) -> None:
         """Refresh the category dropdown with current categories."""
+        # Store current selection
         current_text = self.category_combo.currentText() if self.category_combo.count() > 0 else ""
         
+        # Block signals temporarily to prevent unwanted triggers
+        self.category_combo.blockSignals(True)
+        
+        # Update content
         self.category_combo.clear()
         self.category_combo.addItems(self.redaction_engine.rule_manager.get_all_categories())
         
@@ -507,13 +512,11 @@ class MainWindow(QMainWindow):
             index = self.category_combo.findText(current_text)
             if index >= 0:
                 self.category_combo.setCurrentIndex(index)
+                
+        # Re-enable signals and connect handler
+        self.category_combo.blockSignals(False)
         
-        # Connect category combo box signal
-        try:
-            self.category_combo.currentIndexChanged.disconnect()
-        except TypeError:
-            # Signal was not connected or already disconnected
-            pass
+        # Make sure we're connected to the handler
         self.category_combo.currentIndexChanged.connect(self._handle_category_selection)
     
     def _handle_category_selection(self, index: int) -> None:
@@ -592,7 +595,7 @@ class MainWindow(QMainWindow):
             self.pattern_edit.clear()
             
             # Update status
-            self.statusBar().showMessage(f"Rule '{rule_name}' added to category '{category}'.")
+            self.status_label.setText(f"Rule '{rule_name}' added to category '{category}'.")
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error adding rule: {str(e)}")
@@ -635,7 +638,7 @@ class MainWindow(QMainWindow):
                 self.rules_model.refresh()
                 
                 # Update status
-                self.statusBar().showMessage(f"Rule '{rule_name}' deleted.")
+                self.status_label.setText(f"Rule '{rule_name}' deleted.")
                 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error deleting rule: {str(e)}")
@@ -737,7 +740,7 @@ class MainWindow(QMainWindow):
             self._refresh_category_combo()
             
             # Update status
-            self.statusBar().showMessage(f"Rules imported from {file_path}")
+            self.status_label.setText(f"Rules imported from {file_path}")
             
         except Exception as e:
             QMessageBox.critical(self, "Import Error", f"Error importing rules: {str(e)}")
@@ -765,7 +768,7 @@ class MainWindow(QMainWindow):
                 json.dump(custom_terms, f, indent=4)
             
             # Update status
-            self.statusBar().showMessage(f"Rules exported to {file_path}")
+            self.status_label.setText(f"Rules exported to {file_path}")
             
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Error exporting rules: {str(e)}")
@@ -775,211 +778,53 @@ class MainWindow(QMainWindow):
         # Would load settings from the settings manager
         pass
     
-    # Remove the _schedule_preview method completely
-    
-    def _update_preview(self) -> None:
-        """Update the preview with current redaction settings."""
-        input_text = self.text_input.toPlainText()
-        if not input_text:
-            self.text_output.clear()
-            if self.split_view_checkbox.isChecked():
-                self.original_view.clear()
-            self.stats_group.setVisible(False)
-            return
+    def _update_highlighting(self, state: int) -> None:
+        """
+        Update the highlighting of redacted text in the output.
         
-        # Get selected categories
-        selected_categories = [
-            category for category, checkbox in self.category_checkboxes.items()
-            if checkbox.isChecked()
-        ]
-        
-        if not selected_categories:
-            self.text_output.setPlainText("No categories selected for redaction.")
-            return
-        
-        # Perform redaction
-        try:
-            # Update the original view if split mode is enabled
-            if self.split_view_checkbox.isChecked():
-                self.original_view.setPlainText(input_text)
-            
-            # Check if NLP should be used
-            use_nlp = self.use_nlp_checkbox.isChecked() and self.redaction_engine.use_nlp
-            
-            try:
-                # Perform the redaction
-                redacted_text, stats = self.redaction_engine.redact_text(
-                    input_text, selected_categories, use_nlp=use_nlp
-                )
-            except Exception as e:
-                # Fallback to rule-based redaction if NLP fails
-                if use_nlp:
-                    self.statusBar().showMessage(f"NLP redaction failed, falling back to rules: {str(e)}")
-                    use_nlp = False
-                    redacted_text, stats = self.redaction_engine.redact_text(
-                        input_text, selected_categories, use_nlp=False
-                    )
-                else:
-                    # If not using NLP and still failing, re-raise
-                    raise
-            
-            # Store stats for displaying
-            self.redaction_stats = stats
-            
-            # Apply highlighting if enabled
-            if self.highlight_checkbox.isChecked():
-                # Use HTML with colored redaction markers
-                colored_text = redacted_text
-                
-                # Define colors for different categories
-                category_colors = {
-                    "PII": "#ff5555",       # Red
-                    "PHI": "#5555ff",       # Blue
-                    "FINANCIAL": "#55aa55", # Green
-                    "CREDENTIALS": "#aa55aa", # Purple
-                    "LOCATIONS": "#aaaa55"  # Yellow
-                }
-                
-                # Replace redaction markers with colored spans
-                for category in selected_categories:
-                    color = category_colors.get(category, "#aaaaaa")  # Default to gray
-                    # Pattern to match category markers like [PII:SSN]
-                    pattern = f'\\[{category}:[^\\]]+\\]'
-                    
-                    # Replace with colored versions
-                    colored_matches = []
-                    for match in re.finditer(pattern, colored_text):
-                        marker = match.group(0)
-                        # Replace with HTML
-                        colored_match = f'<span style="background-color: {color}; color: white;">{marker}</span>'
-                        colored_matches.append((marker, colored_match))
-                    
-                    # Apply replacements from longest to shortest to avoid issues
-                    colored_matches.sort(key=lambda x: len(x[0]), reverse=True)
-                    for original, colored in colored_matches:
-                        colored_text = colored_text.replace(original, colored)
-                
-                # Display with HTML formatting
-                self.text_output.setHtml(colored_text)
-            else:
-                # Just use plain text
-                self.text_output.setPlainText(redacted_text)
-            
-            # Update statistics display
-            self._update_statistics(stats)
-            
-        except Exception as e:
-            self.text_output.setPlainText(f"Error during preview: {str(e)}")
-    
-    def _update_statistics(self, stats: Dict[str, int]) -> None:
-        """Update the statistics display with redaction counts."""
-        if not stats:
-            self.stats_group.setVisible(False)
+        Args:
+            state: The checkbox state (checked/unchecked)
+        """
+        if not hasattr(self, 'text_output'):
             return
             
-        # Show the stats group
-        self.stats_group.setVisible(True)
+        # Clear existing formatting
+        cursor = self.text_output.textCursor()
+        cursor.select(cursor.SelectionType.Document)
+        cursor.mergeCharFormat(QTextCharFormat())
         
-        # Calculate total redactions
-        total_redactions = sum(stats.values())
-        
-        if total_redactions == 0:
-            self.stats_label.setText("No redactions performed.")
-            for widget in self.stats_progress_bars.values():
-                widget.setVisible(False)
-            for widget in self.stats_count_labels.values():
-                widget.setVisible(False)
-            return
+        if state == Qt.CheckState.Checked.value:
+            # Get the redacted text and positions
+            text = self.text_output.toPlainText()
+            redacted_positions = self.redaction_engine.get_last_redaction_positions()
             
-        # Update the summary label
-        self.stats_label.setText(f"Total redactions: {total_redactions}")
-        
-        # Clear existing progress bars if categories changed
-        if set(stats.keys()) != set(self.stats_progress_bars.keys()):
-            # Clear existing widgets
-            for i in reversed(range(self.stats_category_layout.count())): 
-                self.stats_category_layout.itemAt(i).widget().setParent(None)
-            
-            # Reset dictionaries
-            self.stats_progress_bars = {}
-            self.stats_count_labels = {}
-            
-            # Create new widgets for each category
-            for category in stats.keys():
-                category_layout = QHBoxLayout()
+            # Apply highlighting
+            for start, end in redacted_positions:
+                cursor = self.text_output.textCursor()
+                cursor.setPosition(start)
+                cursor.setPosition(end, cursor.MoveMode.KeepAnchor)
                 
-                # Category label
-                label = QLabel(f"{category}:")
-                label.setMinimumWidth(100)
-                category_layout.addWidget(label)
-                
-                # Progress bar
-                progress_bar = QProgressBar()
-                progress_bar.setTextVisible(False)
-                category_layout.addWidget(progress_bar)
-                self.stats_progress_bars[category] = progress_bar
-                
-                # Count label
-                count_label = QLabel("0")
-                count_label.setMinimumWidth(50)
-                category_layout.addWidget(count_label)
-                self.stats_count_labels[category] = count_label
-                
-                self.stats_category_layout.addLayout(category_layout)
-        
-        # Update progress bars
-        max_count = max(stats.values()) if stats else 0
-        for category, count in stats.items():
-            if category in self.stats_progress_bars:
-                progress_bar = self.stats_progress_bars[category]
-                if max_count > 0:
-                    progress_bar.setMaximum(max_count)
-                    progress_bar.setValue(count)
-                else:
-                    progress_bar.setMaximum(1)
-                    progress_bar.setValue(0)
-                
-                # Set color based on category
-                palette = QPalette()
-                color = {
-                    "PII": QColor(255, 85, 85),       # Red
-                    "PHI": QColor(85, 85, 255),       # Blue
-                    "FINANCIAL": QColor(85, 170, 85), # Green
-                    "CREDENTIALS": QColor(170, 85, 170), # Purple
-                    "LOCATIONS": QColor(170, 170, 85)  # Yellow
-                }.get(category, QColor(170, 170, 170))  # Default to gray
-                
-                palette.setColor(QPalette.ColorRole.Highlight, color)
-                progress_bar.setPalette(palette)
-                
-            if category in self.stats_count_labels:
-                count_label = self.stats_count_labels[category]
-                count_label.setText(str(count))
-    
-    # Remove the _handle_sensitivity_change method
+                format = QTextCharFormat()
+                format.setBackground(QColor(255, 255, 0, 100))  # Light yellow background
+                format.setForeground(QColor(0, 0, 0))  # Black text
+                cursor.mergeCharFormat(format)
     
     def _toggle_split_view(self, state: int) -> None:
         """Toggle between normal and split view modes."""
+        sizes = self.main_splitter.sizes()
+        total_size = sum(sizes)
+        
         if state == Qt.CheckState.Checked.value:
-            # Add original view to splitter if not already there
-            if self.output_splitter.count() == 1:
-                self.output_splitter.addWidget(self.original_view_group)
-                self.output_splitter.setSizes([400, 400])
-            
-            # Update original text view with current input
-            self.original_view.setPlainText(self.text_input.toPlainText())
+            # Show split view with roughly 50/50 split
+            self.main_splitter.setSizes([int(total_size * 0.5), int(total_size * 0.5)])
         else:
-            # Remove original view from splitter
-            if self.output_splitter.count() > 1:
-                self.original_view_group.setParent(None)
+            # Show mostly input (70%) and a smaller output (30%)
+            self.main_splitter.setSizes([int(total_size * 0.7), int(total_size * 0.3)])
     
     def _clear_input(self) -> None:
         """Clear input text and reset preview."""
         self.text_input.clear()
         self.text_output.clear()
-        if self.split_view_checkbox.isChecked():
-            self.original_view.clear()
-        self.stats_group.setVisible(False)
     
     def _redact_text(self) -> None:
         """Redact the input text and display the result."""
@@ -1000,34 +845,16 @@ class MainWindow(QMainWindow):
         
         # Clear output before redacting
         self.text_output.clear()
-        if self.split_view_checkbox.isChecked():
-            self.original_view.clear()
+        
+        # Add a loading indicator
+        self.statusBar().showMessage("Redacting text...")
         
         # Perform redaction
         try:
-            # Update the original view if split mode is enabled
-            if self.split_view_checkbox.isChecked():
-                self.original_view.setPlainText(input_text)
-            
-            # Check if NLP should be used
-            use_nlp = self.use_nlp_checkbox.isChecked() and self.redaction_engine.use_nlp
-            
-            try:
-                # Perform the redaction
-                redacted_text, stats = self.redaction_engine.redact_text(
-                    input_text, selected_categories, use_nlp=use_nlp
-                )
-            except Exception as e:
-                # Fallback to rule-based redaction if NLP fails
-                if use_nlp:
-                    self.statusBar().showMessage(f"NLP redaction failed, falling back to rules: {str(e)}")
-                    use_nlp = False
-                    redacted_text, stats = self.redaction_engine.redact_text(
-                        input_text, selected_categories, use_nlp=False
-                    )
-                else:
-                    # If not using NLP and still failing, re-raise
-                    raise
+            # Perform the redaction
+            redacted_text, stats = self.redaction_engine.redact_text(
+                input_text, selected_categories
+            )
             
             # Store stats for displaying
             self.redaction_stats = stats
@@ -1043,7 +870,8 @@ class MainWindow(QMainWindow):
                     "PHI": "#5555ff",       # Blue
                     "FINANCIAL": "#55aa55", # Green
                     "CREDENTIALS": "#aa55aa", # Purple
-                    "WORKPLACE": "#aaaa55"  # Yellow
+                    "WORKPLACE": "#aaaa55",  # Yellow
+                    "LOCATIONS": "#55aaaa"  # Teal
                 }
                 
                 # Replace redaction markers with colored spans
@@ -1055,10 +883,9 @@ class MainWindow(QMainWindow):
                     # Replace with colored versions
                     colored_matches = []
                     for match in re.finditer(pattern, colored_text):
-                        marker = match.group(0)
-                        # Replace with HTML
-                        colored_match = f'<span style="background-color: {color}; color: white;">{marker}</span>'
-                        colored_matches.append((marker, colored_match))
+                        original = match.group(0)
+                        colored = f'<span style="background-color: {color}; color: white; padding: 1px 3px; border-radius: 2px; font-weight: bold;">{original}</span>'
+                        colored_matches.append((original, colored))
                     
                     # Apply replacements from longest to shortest to avoid issues
                     colored_matches.sort(key=lambda x: len(x[0]), reverse=True)
@@ -1071,11 +898,35 @@ class MainWindow(QMainWindow):
                 # Just use plain text
                 self.text_output.setPlainText(redacted_text)
             
+            # Clear status message
+            self.statusBar().showMessage("Redaction complete", 3000)
+            
+            # Make sure the output is visible
+            self.split_view_checkbox.setChecked(True)
+            
+            # Make sure the output is visible by adjusting splitter if needed
+            sizes = self.main_splitter.sizes()
+            total = sum(sizes)
+            # Give more space to the output (40/60 split)
+            self.main_splitter.setSizes([int(total * 0.4), int(total * 0.6)])
+            
             # Update statistics display
-            self._update_statistics(stats)
+            try:
+                self._update_statistics(stats)
+                
+                # Optionally show the statistics tab (could also be controlled by a setting)
+                if self.auto_show_stats_checkbox.isChecked():
+                    self.tab_widget.setCurrentIndex(2)  # Switch to Statistics tab (index 2)
+                
+            except Exception as stats_error:
+                logging.error(f"Error updating statistics: {str(stats_error)}")
+                QMessageBox.warning(self, "Warning", f"Redaction completed, but statistics could not be displayed: {str(stats_error)}")
             
         except Exception as e:
-            self.text_output.setPlainText(f"Error during redaction: {str(e)}")
+            self.statusBar().showMessage("Error during redaction", 3000)
+            QMessageBox.critical(self, "Error", f"Error during redaction: {str(e)}")
+            logging.error(f"Redaction error: {str(e)}")
+            traceback.print_exc()
     
     def _load_from_file(self) -> None:
         """Load text from a file."""
@@ -1087,7 +938,7 @@ class MainWindow(QMainWindow):
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     self.text_input.setPlainText(file.read())
-                self.statusBar().showMessage(f"Loaded text from {file_path}")
+                self.status_label.setText(f"Loaded text from {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error loading file: {str(e)}")
     
@@ -1106,6 +957,168 @@ class MainWindow(QMainWindow):
             try:
                 with open(file_path, 'w', encoding='utf-8') as file:
                     file.write(output_text)
-                self.statusBar().showMessage(f"Saved redacted text to {file_path}")
+                self.status_label.setText(f"Saved redacted text to {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error saving file: {str(e)}")
+    
+    def _update_statistics(self, stats: Dict[str, int]) -> None:
+        """
+        Update the statistics display with redaction statistics.
+        
+        Args:
+            stats: Dictionary mapping categories to the count of items redacted.
+        """
+        # Store the stats for potential export
+        self.redaction_stats = stats
+        
+        # Clear previous stats
+        for i in range(self.stats_table.rowCount()):
+            self.stats_table.removeRow(0)
+            
+        # Exit if no stats
+        if not stats:
+            self.stats_summary_label.setText("No redactions performed yet.")
+            return
+            
+        # Add data to table
+        row = 0
+        total_redacted = 0
+        for category, count in sorted(stats.items()):
+            self.stats_table.insertRow(row)
+            
+            # Category name
+            category_item = QTableWidgetItem(category)
+            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.stats_table.setItem(row, 0, category_item)
+            
+            # Count
+            count_item = QTableWidgetItem(str(count))
+            count_item.setFlags(count_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.stats_table.setItem(row, 1, count_item)
+            
+            # Track total
+            total_redacted += count
+            row += 1
+            
+        # Add total row
+        self.stats_table.insertRow(row)
+        total_label = QTableWidgetItem("TOTAL")
+        total_label.setFlags(total_label.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        total_label.setFont(QFont("Arial", weight=QFont.Weight.Bold))
+        self.stats_table.setItem(row, 0, total_label)
+        
+        total_count = QTableWidgetItem(str(total_redacted))
+        total_count.setFlags(total_count.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        total_count.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        total_count.setFont(QFont("Arial", weight=QFont.Weight.Bold))
+        self.stats_table.setItem(row, 1, total_count)
+        
+        # Resize columns to content
+        self.stats_table.resizeColumnsToContents()
+        
+        # Update stats label
+        self.stats_summary_label.setText(f"Redaction Statistics: {total_redacted} items redacted")
+
+    def _copy_to_clipboard(self) -> None:
+        """Copy the redacted text to the clipboard."""
+        text = self.text_output.toPlainText()
+        if not text:
+            QMessageBox.warning(self, "Warning", "No redacted text to copy.")
+            return
+            
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        
+        # Provide feedback by temporarily changing the button text
+        original_text = self.copy_output_button.text()
+        self.copy_output_button.setText("Copied!")
+        self.copy_output_button.setStyleSheet("background-color: #5cb85c; color: white;")
+        
+        # Reset button text after a short delay
+        QTimer.singleShot(1500, lambda: self.copy_output_button.setText(original_text))
+        QTimer.singleShot(1500, lambda: self.copy_output_button.setStyleSheet(""))
+
+    def _create_statistics_tab(self, tab_widget: QWidget) -> None:
+        """Create the statistics tab UI."""
+        layout = QVBoxLayout(tab_widget)
+        
+        # Header
+        header_label = QLabel("Redaction Statistics")
+        header_label.setStyleSheet("font-size: 16pt; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(header_label)
+        
+        # Statistics summary
+        self.stats_summary_label = QLabel("No redactions performed yet.")
+        layout.addWidget(self.stats_summary_label)
+        
+        # Create stats table
+        self.stats_table = QTableWidget(0, 2)  # 0 rows, 2 columns (Category, Count)
+        self.stats_table.setHorizontalHeaderLabels(["Category", "Count"])
+        self.stats_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.stats_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.stats_table.setAlternatingRowColors(True)
+        self.stats_table.verticalHeader().setVisible(False)
+        layout.addWidget(self.stats_table)
+        
+        # Buttons for statistics
+        button_layout = QHBoxLayout()
+        
+        # Clear button
+        self.clear_stats_button = QPushButton("Clear Statistics")
+        self.clear_stats_button.clicked.connect(self._clear_statistics)
+        button_layout.addWidget(self.clear_stats_button)
+        
+        # Export button
+        self.export_stats_button = QPushButton("Export Statistics")
+        self.export_stats_button.clicked.connect(self._export_statistics)
+        button_layout.addWidget(self.export_stats_button)
+        
+        # Add stretch to push buttons to the left
+        button_layout.addStretch()
+        
+        layout.addLayout(button_layout)
+        
+        # Add stretch to push content to the top
+        layout.addStretch()
+    
+    def _clear_statistics(self) -> None:
+        """Clear the statistics display."""
+        # Clear the table
+        for i in range(self.stats_table.rowCount()):
+            self.stats_table.removeRow(0)
+            
+        # Reset the label
+        self.stats_summary_label.setText("No redactions performed yet.")
+        
+        # Reset the stored stats
+        self.redaction_stats = {}
+    
+    def _export_statistics(self) -> None:
+        """Export statistics to a CSV file."""
+        if not hasattr(self, 'redaction_stats') or not self.redaction_stats:
+            QMessageBox.warning(self, "Warning", "No statistics to export.")
+            return
+            
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Statistics", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    # Write header
+                    file.write("Category,Count\n")
+                    
+                    # Write data
+                    total = 0
+                    for category, count in sorted(self.redaction_stats.items()):
+                        file.write(f"{category},{count}\n")
+                        total += count
+                    
+                    # Write total
+                    file.write(f"TOTAL,{total}\n")
+                    
+                self.status_label.setText(f"Statistics exported to {file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error exporting statistics: {str(e)}")
