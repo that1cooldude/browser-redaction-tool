@@ -998,22 +998,43 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No categories selected for redaction.")
             return
         
+        # Clear output before redacting
+        self.text_output.clear()
+        if self.split_view_checkbox.isChecked():
+            self.original_view.clear()
+        
         # Perform redaction
         try:
-            # Show original text in split view if enabled
+            # Update the original view if split mode is enabled
             if self.split_view_checkbox.isChecked():
                 self.original_view.setPlainText(input_text)
             
             # Check if NLP should be used
-            use_nlp = self.use_nlp_checkbox.isChecked()
+            use_nlp = self.use_nlp_checkbox.isChecked() and self.redaction_engine.use_nlp
             
-            redacted_text, stats = self.redaction_engine.redact_text(
-                input_text, selected_categories, use_nlp=use_nlp
-            )
+            try:
+                # Perform the redaction
+                redacted_text, stats = self.redaction_engine.redact_text(
+                    input_text, selected_categories, use_nlp=use_nlp
+                )
+            except Exception as e:
+                # Fallback to rule-based redaction if NLP fails
+                if use_nlp:
+                    self.statusBar().showMessage(f"NLP redaction failed, falling back to rules: {str(e)}")
+                    use_nlp = False
+                    redacted_text, stats = self.redaction_engine.redact_text(
+                        input_text, selected_categories, use_nlp=False
+                    )
+                else:
+                    # If not using NLP and still failing, re-raise
+                    raise
+            
+            # Store stats for displaying
+            self.redaction_stats = stats
             
             # Apply highlighting if enabled
             if self.highlight_checkbox.isChecked():
-                # Use highlighting but apply it directly here instead of calling preview
+                # Use HTML with colored redaction markers
                 colored_text = redacted_text
                 
                 # Define colors for different categories
@@ -1022,7 +1043,7 @@ class MainWindow(QMainWindow):
                     "PHI": "#5555ff",       # Blue
                     "FINANCIAL": "#55aa55", # Green
                     "CREDENTIALS": "#aa55aa", # Purple
-                    "LOCATIONS": "#aaaa55"  # Yellow
+                    "WORKPLACE": "#aaaa55"  # Yellow
                 }
                 
                 # Replace redaction markers with colored spans
@@ -1050,14 +1071,11 @@ class MainWindow(QMainWindow):
                 # Just use plain text
                 self.text_output.setPlainText(redacted_text)
             
-            # Update statistics
+            # Update statistics display
             self._update_statistics(stats)
             
-            # Show stats in status bar
-            total_redactions = sum(stats.values())
-            self.statusBar().showMessage(f"Redaction complete: {total_redactions} items redacted.")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error during redaction: {str(e)}")
+            self.text_output.setPlainText(f"Error during redaction: {str(e)}")
     
     def _load_from_file(self) -> None:
         """Load text from a file."""

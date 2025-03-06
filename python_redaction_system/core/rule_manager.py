@@ -26,50 +26,50 @@ class RuleManager:
         # Preset redaction rules (regex patterns)
         self._preset_rules = {
             "PII": {
-                "NAME": r"\b[A-Z][a-z]+\s[A-Z][a-z]+(\s[A-Z][a-z]+)?\b",
-                "DOB": r"\b\d{2}/\d{2}/\d{4}\b",
-                "SSN": r"\b\d{3}-\d{2}-\d{4}\b",
-                "EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-                "PHONE": r"\(\d{3}\)\s\d{3}-\d{4}",
-                "DRIVER_LICENSE": r"\b[A-Z]\d{7}\b",
-                "PASSPORT": r"\b[A-Z]\d{8}\b",
-                "ADDRESS": r"\d{1,5}\s[A-Za-z0-9\s]+(Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr)\b",
+                "NAME": r"\b(?:Name|Full Name):\s*[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b",
+                "DOB": r"\b(?:Date of Birth|DOB|Birth Date):\s*\d{1,2}/\d{1,2}/\d{2,4}\b",
+                "SSN": r"\b(?:SSN|Social Security Number):\s*\d{3}[-]?\d{2}[-]?\d{4}\b",
+                "EMAIL": r"\b(?:Email|E-mail|Email Address):\s*[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+                "PHONE": r"\b(?:Phone|Phone Number|Contact):\s*\(\d{3}\)\s?\d{3}-\d{4}\b",
+                "DRIVER_LICENSE": r"\b(?:Driver's License|DL|License):\s*[A-Z]\d{7}\b",
+                "PASSPORT": r"\b(?:Passport|Passport Number):\s*[A-Z]\d{8}\b",
+                "ADDRESS": r"\b(?:Address|Home Address|Residence):\s*\d{1,5}\s+[A-Za-z0-9\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr)\b",
             },
             "FINANCIAL": {
-                "CREDIT_CARD": r"\b\d{4}\s\d{4}\s\d{4}\s\d{4}\b",
-                "EXPIRATION_DATE": r"\b\d{2}/\d{2}\b",
-                "CVV": r"\b\d{3}\b",
-                "BANK_ACCOUNT": r"\b\d{9,12}\b",
-                "ROUTING_NUMBER": r"\b\d{9}\b",
-                "BITCOIN_WALLET": r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",
+                "CREDIT_CARD": r"\b(?:Credit Card|CC|Card Number):\s*\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+                "EXPIRATION_DATE": r"\b(?:Expiration|Exp|Expiry):\s*(0[1-9]|1[0-2])/([0-9]{2})\b",
+                "CVV": r"\b(?:CVV|CVC|Security Code):\s*\d{3,4}\b",
+                "BANK_ACCOUNT": r"\b(?:Bank Account|Account Number|Acct):\s*\d{8,12}\b",
+                "ROUTING_NUMBER": r"\b(?:Routing Number|RTN|Routing):\s*0[0-9]{8}\b",
+                "BITCOIN_WALLET": r"\b(?:Bitcoin|BTC|Wallet):\s*[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",
             },
             "PHI": {
-                "PATIENT_ID": r"\bPAT-\d{8}\b",
-                "INSURANCE_POLICY": r"\bINS-\d{7}\b",
-                "MEDICAL_RECORD": r"\bMRN-\d{10}\b",
-                "DIAGNOSIS": r"\b[A-Za-z0-9\s]+\([A-Z]\d{2}\.\d\)\b",
-                "MEDICATION": r"\b[A-Za-z]+\s\d+mg\s(twice|once|daily|weekly)\b",
+                "PATIENT_ID": r"\b(?:Patient ID|Patient Identifier):\s*PAT-\d{8}\b",
+                "INSURANCE_POLICY": r"\b(?:Insurance Policy|Policy Number):\s*INS-\d{7}\b",
+                "MEDICAL_RECORD": r"\b(?:Medical Record|MRN|Record Number):\s*MRN-\d{10}\b",
+                "DIAGNOSIS": r"\b(?:Diagnosis|Condition):\s*[A-Za-z0-9\s]+\s?\([A-Z]\d{2}\.\d{1,2}\)\b",
+                "MEDICATION": r"\b(?:Medication|Prescription|Rx):\s*[A-Za-z]+\s\d+\s?mg\s(twice|once|daily|weekly)\b",
             },
             "WORKPLACE": {
-                "EMPLOYER": r"\b[A-Za-z\s]+,\sInc\.\b",
-                "EMPLOYEE_ID": r"\bEMP-\d{5}\b",
-                "WORK_EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-                "SUPERVISOR": r"\b[A-Z][a-z]+\s[A-Z][a-z]+\b",
-                "SALARY": r"\$\d{2,3},\d{3}\sannually",
+                "EMPLOYER": r"\b(?:Employer|Company|Organization):\s*[A-Za-z0-9\s]+(?:,\s?Inc\.?|Corporation|Corp\.|LLC|Ltd\.)\b",
+                "EMPLOYEE_ID": r"\b(?:Employee ID|Emp ID|ID Number):\s*EMP-\d{5}\b",
+                "WORK_EMAIL": r"\b(?:Work Email|Business Email|Corporate Email):\s*[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b",
+                "SUPERVISOR": r"\b(?:Supervisor|Manager|Boss):\s*[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b",
+                "SALARY": r"\b(?:Salary|Pay|Compensation):\s*\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s(?:annually|per year|/year)\b",
             },
             "CREDENTIALS": {
-                "USERNAME": r"\b[a-zA-Z0-9._-]{3,20}\b",
-                "PASSWORD": r"\b[A-Za-z0-9@#$%^&+=]{8,}\b",
-                "API_KEY": r"\bsk_[a-zA-Z0-9]{24,}\b",
-                "WIFI_PASSWORD": r"\b[A-Za-z0-9@#$%^&+=]{8,}\b",
+                "USERNAME": r"\b(?:Username|Login|Account):\s*[a-zA-Z0-9][a-zA-Z0-9._-]{2,19}\b",
+                "PASSWORD": r"\b(?:Password|Pwd|Pass):\s*(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@#$%^&+=]{8,}\b",
+                "API_KEY": r"\b(?:API Key|Secret Key|Key):\s*(?:sk|pk)_(?:test|live)_[A-Za-z0-9]{24,}\b",
+                "WIFI_PASSWORD": r"\b(?:WiFi Password|WLAN Password|Network Key):\s*(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@#$%^&+=]{8,}\b",
             }
         }
         
         # Sensitivity categories mapping
         self._sensitivity_mapping = {
             "low": ["PII", "CREDENTIALS"],
-            "medium": ["PII", "PHI", "CREDENTIALS", "FINANCIAL"],
-            "high": ["PII", "PHI", "CREDENTIALS", "FINANCIAL", "LOCATIONS"]
+            "medium": ["PII", "PHI", "CREDENTIALS", "WORKPLACE"],
+            "high": ["PII", "PHI", "CREDENTIALS", "WORKPLACE", "FINANCIAL"]
         }
     
     def get_all_categories(self) -> List[str]:
