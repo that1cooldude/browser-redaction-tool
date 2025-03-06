@@ -5,7 +5,7 @@ A comprehensive text redaction system designed to sanitize sensitive information
 ## Features
 
 - **Powerful Redaction Engine**: Preset rules for common sensitive information (PII, PHI, etc.)
-- **User-Friendly Interface**: Simple PyQt6-based UI with sensitivity controls
+- **User-Friendly Interface**: Simple PySide6-based UI with sensitivity controls
 - **Custom Term Management**: Add custom terms without requiring regex knowledge
 - **Secure Storage**: Encrypted storage of custom terms and configuration
 - **Multiple Export Options**: Export redacted text in various formats (text, JSON)
@@ -19,22 +19,51 @@ git clone https://github.com/yourusername/python-redaction-system.git
 cd python-redaction-system
 
 # Create a virtual environment
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install core dependencies
-pip install PyQt6==6.5.3 regex==2023.10.3 cryptography==41.0.5 pyyaml==6.0.1 pyinstaller==6.12.0
-
-# Optional: Install spaCy for enhanced NLP-based entity detection
-# Note: The application works without spaCy, but NLP features will be disabled
-pip install spacy
-python -m spacy download en_core_web_sm
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ## Usage
 
+There are several ways to run the application:
+
+### Method 1: Run as Module (Recommended)
 ```bash
-# Run the application
+# From the project root directory:
+python -m python_redaction_system.main
+```
+
+### Method 2: Set PYTHONPATH Environment Variable
+```bash
+# On macOS/Linux:
+cd /path/to/python-redaction-system
+PYTHONPATH=$PWD venv/bin/python python_redaction_system/main.py
+
+# On Windows (Command Prompt):
+cd C:\path\to\python-redaction-system
+set PYTHONPATH=%CD%
+venv\Scripts\python python_redaction_system\main.py
+
+# On Windows (PowerShell):
+cd C:\path\to\python-redaction-system
+$env:PYTHONPATH = $PWD
+.\venv\Scripts\python .\python_redaction_system\main.py
+```
+
+### Method 3: Use the Launcher Script
+```bash
+# From the project root directory:
+python run.py
+```
+
+### Method 4: Install in Development Mode
+```bash
+# From the project root directory:
+pip install -e .
+# Then run from anywhere:
 python -m python_redaction_system.main
 ```
 
@@ -46,7 +75,7 @@ python_redaction_system/
 │   ├── __init__.py
 │   ├── redaction_engine.py
 │   └── rule_manager.py
-├── ui/                  # PyQt6 user interface
+├── ui/                  # PySide6 user interface
 │   ├── __init__.py
 │   ├── main_window.py
 │   └── components/
@@ -88,10 +117,24 @@ The application is designed to work across all major platforms:
 - Application data stored in `~/.local/share/TextRedactionSystem/`
 - Adapts to various desktop environments
 
-## Optional Components
+## Required and Optional Components
 
-- **spaCy NLP**: Enhances entity recognition but application functions without it
-- **SQLite3**: Built into Python's standard library, no separate installation needed
+### Required Components
+- **PySide6**: UI framework (explicitly installed via requirements.txt)
+- **SQLite3**: Database for storing terms and settings (included with Python's standard library, no separate installation needed)
+- **cryptography**: Used for secure storage of sensitive data
+- **regex**: Enhanced regular expression support
+- **pyyaml**: Configuration file parsing
+
+### Optional Components
+- **spaCy**: Enhances entity recognition with NLP capabilities (application functions without it, but with reduced features)
+
+## Cross-Platform Notes
+
+When developing or running on Windows:
+- Use PySide6 instead of PyQt6 for better compatibility
+- Enable high DPI scaling for modern displays
+- Use Windows-specific UI adjustments for better performance
 
 ## License
 

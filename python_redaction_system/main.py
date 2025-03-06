@@ -8,6 +8,10 @@ import platform
 import traceback
 from typing import Optional
 
+# Suppress Qt's IMK warnings on macOS
+if platform.system() == "Darwin":  # Check if running on macOS
+    os.environ['QT_MAC_WANTS_LAYER'] = '1'
+
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont

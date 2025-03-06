@@ -91,11 +91,6 @@ class MainWindow(QMainWindow):
         tab_widget.addTab(rule_tab, "Rule Management")
         self._create_rule_management_tab(rule_tab)
         
-        # Tab 3: Settings
-        settings_tab = QWidget()
-        tab_widget.addTab(settings_tab, "Settings")
-        self._create_settings_tab(settings_tab)
-        
         # Status bar
         self.statusBar().showMessage("Ready")
         
@@ -516,7 +511,8 @@ class MainWindow(QMainWindow):
         # Connect category combo box signal
         try:
             self.category_combo.currentIndexChanged.disconnect()
-        except:
+        except TypeError:
+            # Signal was not connected or already disconnected
             pass
         self.category_combo.currentIndexChanged.connect(self._handle_category_selection)
     
@@ -773,23 +769,6 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Error exporting rules: {str(e)}")
-    
-    def _create_settings_tab(self, tab_widget: QWidget) -> None:
-        """
-        Create the settings tab.
-        
-        Args:
-            tab_widget: The widget to add components to.
-        """
-        # This would be implemented with settings for the application
-        layout = QVBoxLayout(tab_widget)
-        layout.addWidget(QLabel("Settings management will be implemented here"))
-        
-        # This would include:
-        # - Export format settings
-        # - UI theme settings
-        # - Default paths
-        # - Log retention settings
     
     def _load_settings(self) -> None:
         """Load application settings."""

@@ -26,28 +26,42 @@ class RuleManager:
         # Preset redaction rules (regex patterns)
         self._preset_rules = {
             "PII": {
-                "SSN": r"\b\d{3}-\d{2}-\d{4}\b",  # Social Security Numbers
-                "US_PHONE": r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b",  # US Phone Numbers
-                "EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",  # Email Addresses
-                "CREDIT_CARD": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",  # Credit Card Numbers
-            },
-            "PHI": {
-                "MRN": r"\b(MRN|Medical Record Number):?\s*\d{6,10}\b",  # Medical Record Numbers
-                "HEALTH_ID": r"\b(HIC|Health Insurance Claim Number):?\s*\w{6,12}\b",  # Health Insurance IDs
-                "DIAGNOSIS": r"\b(diagnosed with|diagnosis of|suffers from)\s+\w+\s+\w+\b",  # Diagnostic information
+                "NAME": r"\b[A-Z][a-z]+\s[A-Z][a-z]+(\s[A-Z][a-z]+)?\b",
+                "DOB": r"\b\d{2}/\d{2}/\d{4}\b",
+                "SSN": r"\b\d{3}-\d{2}-\d{4}\b",
+                "EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+                "PHONE": r"\(\d{3}\)\s\d{3}-\d{4}",
+                "DRIVER_LICENSE": r"\b[A-Z]\d{7}\b",
+                "PASSPORT": r"\b[A-Z]\d{8}\b",
+                "ADDRESS": r"\d{1,5}\s[A-Za-z0-9\s]+(Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr)\b",
             },
             "FINANCIAL": {
-                "BANK_ACCOUNT": r"\b(account|acct)[\s#:_-]*\d{8,12}\b",  # Bank Account Numbers
-                "ROUTING_NUMBER": r"\b(routing|RTN)[\s#:_-]*\d{9}\b",  # Bank Routing Numbers
+                "CREDIT_CARD": r"\b\d{4}\s\d{4}\s\d{4}\s\d{4}\b",
+                "EXPIRATION_DATE": r"\b\d{2}/\d{2}\b",
+                "CVV": r"\b\d{3}\b",
+                "BANK_ACCOUNT": r"\b\d{9,12}\b",
+                "ROUTING_NUMBER": r"\b\d{9}\b",
+                "BITCOIN_WALLET": r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",
             },
-            "LOCATIONS": {
-                "ADDRESS": r"\b\d{1,5}\s+[A-Za-z0-9\s]+\b(Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr)\b",
-                "ZIP_CODE": r"\b\d{5}(-\d{4})?\b",  # US ZIP Codes
-                "GPS": r"\b\d{1,3}\.\d+,\s*-?\d{1,3}\.\d+\b",  # GPS Coordinates
+            "PHI": {
+                "PATIENT_ID": r"\bPAT-\d{8}\b",
+                "INSURANCE_POLICY": r"\bINS-\d{7}\b",
+                "MEDICAL_RECORD": r"\bMRN-\d{10}\b",
+                "DIAGNOSIS": r"\b[A-Za-z0-9\s]+\([A-Z]\d{2}\.\d\)\b",
+                "MEDICATION": r"\b[A-Za-z]+\s\d+mg\s(twice|once|daily|weekly)\b",
+            },
+            "WORKPLACE": {
+                "EMPLOYER": r"\b[A-Za-z\s]+,\sInc\.\b",
+                "EMPLOYEE_ID": r"\bEMP-\d{5}\b",
+                "WORK_EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+                "SUPERVISOR": r"\b[A-Z][a-z]+\s[A-Z][a-z]+\b",
+                "SALARY": r"\$\d{2,3},\d{3}\sannually",
             },
             "CREDENTIALS": {
-                "PASSWORD": r"\b(password|pwd|passcode)[\s:=]*\w{6,20}\b",  # Passwords
-                "API_KEY": r"\b[A-Za-z0-9_-]{20,40}\b",  # API Keys
+                "USERNAME": r"\b[a-zA-Z0-9._-]{3,20}\b",
+                "PASSWORD": r"\b[A-Za-z0-9@#$%^&+=]{8,}\b",
+                "API_KEY": r"\bsk_[a-zA-Z0-9]{24,}\b",
+                "WIFI_PASSWORD": r"\b[A-Za-z0-9@#$%^&+=]{8,}\b",
             }
         }
         
