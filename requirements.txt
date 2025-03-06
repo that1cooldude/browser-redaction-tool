@@ -1,19 +1,23 @@
 # Core dependencies
-PySide6==6.8.2.1
-regex==2023.10.3
-cryptography==41.0.5
-pyyaml==6.0.1
-
-# Optional NLP dependencies
-# spacy==3.7.4
-# python -m spacy download en_core_web_sm
+PySide6>=6.0.0
+regex>=2023.10.3
+cryptography>=41.0.5
+pyyaml>=6.0.1
 
 # Testing dependencies
-pytest==7.4.3
-pytest-qt==4.2.0
+pytest>=7.4.3
+pytest-qt>=4.2.0
 
 # Deployment dependencies
-pyinstaller==6.12.0  # Updated from 6.3.0 which is not available
+pyinstaller>=6.12.0
 
 # Note: SQLite3 is included with Python standard library
 # No need for separate SQLite3 package
+
+# NLP dependencies conditionally included
+# presidio-analyzer won't work with Python 3.13, so we'll handle this separately
+presidio-anonymizer>=2.2.0
+python-dotenv>=1.0.0
+
+# Individual dependencies 
+phonenumbers<9.0.0,>=8.12
