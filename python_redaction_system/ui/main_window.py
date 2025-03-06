@@ -1,13 +1,14 @@
 """
-Main window for the PyQt6-based redaction system UI.
+Main window for the PySide6-based redaction system UI.
 """
 
 from typing import Dict, List, Optional, Tuple, Any
 import re
+import platform
 
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QPalette, QColor, QTextCharFormat, QTextCursor, QFont
+from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QLabel, QComboBox, QGroupBox, QSplitter,
     QCheckBox, QTabWidget, QFileDialog, QMessageBox, QProgressBar
@@ -45,9 +46,30 @@ class MainWindow(QMainWindow):
         
         # Set up UI
         self.setWindowTitle("Text Redaction System")
-        self.resize(1000, 800)
+        
+        # Set Windows-specific window size and font
+        if platform.system() == "Windows":
+            self.resize(1200, 900)  # Slightly larger default size for Windows
+            self.setFont(QFont('Segoe UI', 9))
+        else:
+            self.resize(1000, 800)
+        
         self._create_ui()
         self._load_settings()
+        
+        # Set minimum window size
+        self.setMinimumSize(800, 600)
+        
+        # Center the window on screen
+        self.center_window()
+    
+    def center_window(self):
+        """Center the window on the screen."""
+        screen = QApplication.primaryScreen().geometry()
+        window_size = self.geometry()
+        x = (screen.width() - window_size.width()) // 2
+        y = (screen.height() - window_size.height()) // 2
+        self.move(x, y)
     
     def _create_ui(self) -> None:
         """Create the main UI layout and components."""
@@ -259,9 +281,9 @@ class MainWindow(QMainWindow):
         Args:
             tab_widget: The widget to add components to.
         """
-        from PyQt6.QtCore import QSortFilterProxyModel, QAbstractTableModel, Qt, QModelIndex
-        from PyQt6.QtGui import QFont
-        from PyQt6.QtWidgets import (QTableView, QHeaderView, QSplitter, QFormLayout, 
+        from PySide6.QtCore import QSortFilterProxyModel, QAbstractTableModel, Qt, QModelIndex
+        from PySide6.QtGui import QFont
+        from PySide6.QtWidgets import (QTableView, QHeaderView, QSplitter, QFormLayout, 
                                     QComboBox, QLineEdit, QGroupBox, QRadioButton,
                                     QButtonGroup, QPushButton, QFileDialog, QMessageBox,
                                     QInputDialog, QScrollArea)

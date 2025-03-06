@@ -8,7 +8,9 @@ import platform
 import traceback
 from typing import Optional
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 from python_redaction_system.core.redaction_engine import RedactionEngine
 from python_redaction_system.core.rule_manager import RuleManager
@@ -73,6 +75,28 @@ def setup_platform_specifics():
         os.makedirs(app_data, exist_ok=True)
         return {"data_dir": app_data}
 
+
+def setup_windows_specifics(app: QApplication):
+    """
+    Set up Windows-specific UI configurations
+    
+    Args:
+        app: The QApplication instance
+    """
+    if platform.system() == "Windows":
+        # Enable high DPI scaling
+        if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+            app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+            app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+        
+        # Set Windows-specific font
+        app.setFont(QFont('Segoe UI', 9))
+        
+        # Set Windows-specific style
+        app.setStyle('Fusion')
+
+
 def main():
     """Main entry point for the application."""
     # Set up global exception handler
@@ -85,6 +109,9 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Text Redaction System")
     app.setOrganizationName("Government Security Agency")
+    
+    # Set up Windows-specific UI configurations
+    setup_windows_specifics(app)
     
     try:
         # Initialize components
